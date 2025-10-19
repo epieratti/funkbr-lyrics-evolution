@@ -1,0 +1,29 @@
+{
+  "version": "1.0",
+  "partitions": ["year"],
+  "columns": {
+    "track_id": "string",
+    "isrc": "string",
+    "artist_id": "string",
+    "artist_name": "string",
+    "album_id": "string",
+    "album_name": "string",
+    "release_date": "date",
+    "release_precision": "string",
+    "year_launch": "int",
+    "year_impact": "int?",
+    "region_proxy": "string",
+    "subgenre": "string",
+    "label": "string",
+    "popularity": "int",
+    "decil_pop": "int",
+    "tokens_total": "int",
+    "tokens_clean": "int",
+    "qc_censored": "bool",
+    "qc_lang_pt_ratio": "float",
+    "source_lyrics": "string",
+    "source_year_validation": "string",
+    "schema_version": "string",
+    "ingestion_ts": "timestamp"
+  }
+}

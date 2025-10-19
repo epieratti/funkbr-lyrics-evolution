@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+title: "FunkBR-Lyrics-Evolution (2005–2025)"
+authors:
+  - family-names: "Pieratti"
+    given-names: "Enrico"
+version: "1.0.0"
+license: "MIT"
+message: "Se utilizar este projeto, por favor cite conforme o formato abaixo."

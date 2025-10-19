@@ -1,0 +1,26 @@
+# --- Core HTTP & JSON ---
+requests==2.32.3
+urllib3==2.2.2
+certifi==2024.8.30
+charset-normalizer==3.3.2
+idna==3.10
+
+# --- Ambiente e variáveis ---
+python-dotenv==1.0.1
+
+# --- CLI e logs ---
+tqdm==4.66.5
+colorama==0.4.6
+
+# --- Tratamento de dados e CSV ---
+pandas==2.2.3
+
+# --- Fuzzy matching para artistas ---
+fuzzywuzzy==0.18.0
+python-Levenshtein==0.25.1
+
+# --- Backoff exponencial e retries ---
+tenacity==8.5.0
+
+# --- Compatibilidade e sistema ---
+platformdirs==4.2.2
