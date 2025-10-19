@@ -1,0 +1,43 @@
+__pycache__/
+*.pyc
+logs/
+*.log
+.env
+data/raw/
+data/clean/
+data/enriched/
+data/processed/
+data/*.sqlite*
+.tmp/
+.DS_Store
+# caches e compilados
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# logs e temporários
+logs/
+*.log
+*.tmp
+*.bak
+*.old
+.DS_Store
+
+# ambiente
+.env
+.env.*
+.envrc
+
+# artefatos de execução
+collector_progress_*.json
+data/*.sqlite*
+data/raw/
+data/clean/
+data/enriched/
+data/processed/
+
+# arquivos de sistema e IDE
+.vscode/
+.idea/
+
