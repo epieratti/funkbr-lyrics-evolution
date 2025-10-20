@@ -343,3 +343,4 @@ def cli_main():    # [patched] chamada resiliente ao collect_for_artist com fall
 # [patched] canonical __main__ guard
 if __name__ == "__main__":
     cli_main()
+cli_main()
