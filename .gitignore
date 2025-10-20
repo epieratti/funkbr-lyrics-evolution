@@ -13,10 +13,8 @@ logs/
 .envrc
 collector_progress_*.json
 data/*.sqlite*
-data/raw/
 data/clean/
 data/enriched/
-data/processed/
 .vscode/
 .idea/
 # segredos
@@ -59,7 +57,6 @@ scripts/*.bak*
 .env.*
 venv/
 logs/
-data/raw/
 data/tmp/
 *.jsonl
 *.tar.gz
@@ -75,3 +72,15 @@ processed_brcorpus/*
 
 # Exceto arquivos consolidados de corpus
 !processed_brcorpus/brcorpus_*.jsonl
+
+# Ignora tudo na pasta data/raw
+data/raw/*
+
+# Ignora tudo na pasta data/processed
+data/processed/*
+
+# Exceto arquivos de metadados e manifests
+!data/raw/*.manifest
+!data/raw/*.meta.json
+!data/processed/*.manifest
+!data/processed/*.meta.json
