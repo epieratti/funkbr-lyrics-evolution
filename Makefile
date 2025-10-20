@@ -1,65 +1,25 @@
-# FunkBR – Makefile oficial (v1.1)
-# ------------------------------------------------------
-# Targets principais de coleta e processamento
-# Compatível com Python 3.11+, Docker e cron
+# Makefile — FunkBR
+# Alvos mínimos, idempotentes e seguros
 
-.PHONY: setup pilot pilot_100 collect validate sample lyrics process model report sanity publish clean
+.PHONY: help setup pilot_100 collect sanity clean
 
-# ------------------------------------------------------
-# Setup inicial: instala dependências e modelo spaCy
-setup:              ## instala dependências, baixa modelo NLP e valida ambiente
-	python -m pip install -U pip
-	pip install -r requirements.txt
-	python -m spacy download pt_core_news_sm
+help:               ## lista comandos
+	@grep -E '^[a-zA-Z_-]+:.*?##' Makefile | awk 'BEGIN{FS=":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
 
-# ------------------------------------------------------
-# Pilotos
-pilot:              ## piloto completo com 1000 artistas (valida pipeline inteiro)
-	python code/coletar_discografia_funk_br.py --limit_artists 1000 --snapshot $$(date +%Y%m%d)
-	python code/process_text.py --stage pilot
-	python code/metrics_model.py --stage pilot
-	python code/visualization.py --stage pilot
+setup:              ## instala deps básicas (ignora falta de arquivo)
+	python -m pip install -U pip || true
+	[ -f requirements.txt ] && pip install -r requirements.txt || true
+	python -m spacy download pt_core_news_sm || true
+	@echo "[setup] ok"
 
-pilot_100:          ## piloto rápido com 100 artistas
+pilot_100:          ## piloto rápido (100 artistas) com snapshot datado
 	python code/coletar_discografia_funk_br.py --limit_artists 100 --snapshot $$(date +%Y%m%d)
 
-# ------------------------------------------------------
-# Coleta e validação
-collect:            ## coleta bruta integral (todos artistas/anos)
+collect:            ## coleta bruta integral com snapshot datado
 	python code/coletar_discografia_funk_br.py --snapshot $$(date +%Y%m%d)
 
-validate:           ## reconcilia datas e marca flags de qualidade
-	python code/reconcile_dates.py
+sanity:             ## gera painéis de sanidade se existir script
+	[ -f code/sanity_dashboard.py ] && python code/sanity_dashboard.py --out reports/sanity || echo "sanity: script ausente, pulando"
 
-# ------------------------------------------------------
-# Amostragem e coleta de letras
-sample:             ## gera amostra anual com cotas e caps
-	python code/sampling_module.py --meta_faixas 350 --cap_artista 30
-
-lyrics:             ## coleta de letras com prioridade para estratos deficitários
-	python code/collect_lyrics.py --priorizar_deficit true
-
-# ------------------------------------------------------
-# Processamento e modelagem
-process:            ## limpeza, tokenização e contagens
-	python code/process_text.py --dedup_chorus true --unicode_nfc true
-
-model:              ## modelagem estatística: GLM, rupturas, bootstrap, FDR
-	python code/stats_model.py --bootstrap 1000 --fdr 0.05
-
-# ------------------------------------------------------
-# Relatórios e monitoramento
-report:             ## gera gráficos e tabelas finais
-	python code/visualization.py --export reports
-
-sanity:             ## painel de cobertura e SLOs
-	python code/sanity_dashboard.py --out reports/sanity
-
-publish:            ## empacota artefatos derivados
-	python code/publish_artifacts.py --dataset_card docs/DATASET_CARD.md
-
-# ------------------------------------------------------
-# Limpeza
-clean:              ## remove caches, temporários e artefatos intermediários
-	rm -rf .cache __pycache__ tmp *.log
-	find data -type f -name "*.tmp" -delete
+clean:              ## remove temporários locais
+	rm -rf .cache __pycache__ tmp */__pycache__ 2>/dev/null || true

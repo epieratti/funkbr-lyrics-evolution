@@ -1,0 +1,25 @@
+name: CI-lite
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  make-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate Makefile targets
+        run: |
+          make help
+          make -n setup
+          make -n collect
+          make -n pilot_100
+          make -n sanity
