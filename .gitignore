@@ -19,3 +19,37 @@ data/enriched/
 data/processed/
 .vscode/
 .idea/
+# segredos
+.env
+*.env
+.env.*
+.envrc
+*.pem
+id_rsa*
+id_ed25519*
+*.key
+*.p12
+*.pfx
+
+# artefatos locais
+__pycache__/
+.cache/
+tmp/
+*.log
+*.sqlite
+*.db
+.DS_Store
+.vscode/
+.idea/
+
+# dados do projeto (mantém estrutura com .gitkeep)
+data/**
+!data/.gitkeep
+logs/**
+!logs/.gitkeep
+reports/**
+!reports/.gitkeep
+
+# ambiente virtual e backups locais
+venv/
+scripts/*.bak*
