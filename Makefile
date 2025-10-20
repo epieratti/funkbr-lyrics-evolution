@@ -72,3 +72,79 @@ clean:
 	@echo "Removendo arquivos temporários e logs..."
 	rm -rf $(LOG_DIR)/*.log $(OUT)/*.jsonl $(OUT)/*.csv $(OUT)/*.json
 	@echo "Limpeza concluída."
+# --- FUNK: deduplicação do último enriched gerado ---
+.PHONY: dedupe_latest
+dedupe_latest:
+	@echo "Deduplicando o arquivo enriched mais recente em data/raw/..."
+	@python code/dedupe_albums_tracks.py
+	@echo
+	@ls -1t data/raw/*_dedup.csv | head -n1 | xargs -I{} sh -c 'echo "Saída: {}"; wc -l {};'
+
+# --- FUNK: coleta completa de um artista (álbuns + faixas) ---
+.PHONY: one_artist_full
+one_artist_full:
+	@if [ -z "$(ARTIST_NAME)" ]; then \
+		echo "❌ Uso: make one_artist_full ARTIST_NAME=\"Anitta\""; \
+		exit 1; \
+	fi
+	@echo "🎧 Coletando álbuns e faixas de: $(ARTIST_NAME)"
+	@TS=$$(date +%Y%m%d_%H%M%S); \
+	SAFE=$$(printf "%s" "$(ARTIST_NAME)" | tr ' /' '__'); \
+	OUTJ="data/raw/one_$${TS}_$${SAFE}_albums_tracks.jsonl"; \
+	OUTC="data/raw/one_$${TS}_$${SAFE}_albums_tracks.csv"; \
+	LOGF="logs/collect_$${TS}_$${SAFE}.log"; \
+	YEAR_START=2005 YEAR_END=2025 MARKET=BR FLUSH_EVERY_N_ROWS=50; \
+	PYTHONUNBUFFERED=1 OUTPUT_JSONL=$$OUTJ OUTPUT_CSV=$$OUTC LOG_FILE=$$LOGF \
+	YEAR_START=$$YEAR_START YEAR_END=$$YEAR_END MARKET=$$MARKET ARTIST_NAME="$(ARTIST_NAME)" \
+	python code/run_one_artist_full.py | tee -a $$LOGF; \
+	echo; echo "✅ Gerados:"; ls -lh $$OUTC $$OUTJ
+
+# --- FUNK: enriquecer último CSV com ISRC e track_popularity ---
+.PHONY: enrich_latest
+enrich_latest:
+	@echo "✨ Enriquecendo o último *_albums_tracks.csv em data/raw/..."
+	@python code/enrich_latest.py
+	@echo
+	@ls -1t data/raw/*_enriched.csv | head -n1 | xargs -I{} sh -c 'echo "Saída: {}"; wc -l {};'
+
+# --- FUNK: deduplicação do último enriched gerado ---
+.PHONY: dedupe_latest
+dedupe_latest:
+	@echo "🔍 Deduplicando o arquivo enriched mais recente em data/raw/..."
+	@python code/dedupe_albums_tracks.py
+	@echo
+	@ls -1t data/raw/*_dedup.csv | head -n1 | xargs -I{} sh -c 'echo "Saída: {}"; wc -l {};'
+# === FUNK targets (sem TAB; usa '>' como prefixo de receita) ===
+.RECIPEPREFIX := >
+
+.PHONY: one_artist_full
+one_artist_full:
+> if [ -z "$(ARTIST_NAME)" ]; then \
+>   echo "❌ Uso: make one_artist_full ARTIST_NAME=\"Anitta\""; \
+>   exit 1; \
+> fi
+> echo "🎧 Coletando álbuns e faixas de: $(ARTIST_NAME)"
+> TS=$$(date +%Y%m%d_%H%M%S); \
+> SAFE=$$(printf "%s" "$(ARTIST_NAME)" | tr ' /' '__'); \
+> OUTJ="data/raw/one_$${TS}_$${SAFE}_albums_tracks.jsonl"; \
+> OUTC="data/raw/one_$${TS}_$${SAFE}_albums_tracks.csv"; \
+> LOGF="logs/collect_$${TS}_$${SAFE}.log"; \
+> YEAR_START=2005 YEAR_END=2025 MARKET=BR FLUSH_EVERY_N_ROWS=50; \
+> PYTHONUNBUFFERED=1 OUTPUT_JSONL=$$OUTJ OUTPUT_CSV=$$OUTC LOG_FILE=$$LOGF \
+> YEAR_START=$$YEAR_START YEAR_END=$$YEAR_END MARKET=$$MARKET ARTIST_NAME="$(ARTIST_NAME)" \
+> python code/run_one_artist_full.py | tee -a $$LOGF; \
+> echo; echo "✅ Gerados:"; ls -lh $$OUTC $$OUTJ
+
+.PHONY: enrich_latest
+enrich_latest:
+> echo "✨ Enriquecendo o último *_albums_tracks.csv em data/raw/..."
+> python code/enrich_latest.py
+> echo
+> ls -1t data/raw/*_enriched.csv | head -n1 | xargs -I{} sh -c 'echo "Saída: {}"; wc -l {};'
+
+.PHONY: dedupe_latest
+dedupe_latest:
+> echo "🔍 Deduplicando o arquivo enriched mais recente em data/raw/..."
+> python code/dedupe_albums_tracks.py
+> echo
+> ls -1t data/raw/*_dedup.csv | head -n1 | xargs -I{} sh -c 'echo "Saída: {}"; wc -l {};'
