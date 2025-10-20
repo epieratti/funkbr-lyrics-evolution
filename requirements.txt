@@ -24,3 +24,4 @@ tenacity==8.5.0
 
 # --- Compatibilidade e sistema ---
 platformdirs==4.2.2
+python-dotenv
