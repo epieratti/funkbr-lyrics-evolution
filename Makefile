@@ -23,3 +23,17 @@ sanity:             ## gera painéis de sanidade se existir script
 
 clean:              ## remove temporários locais
 	rm -rf .cache __pycache__ tmp */__pycache__ 2>/dev/null || true
+
+dedup_raw:          ## deduplica todos os .jsonl em data/raw
+	python code/dedup_snapshot.py --path data/raw --pattern "*.jsonl"
+
+dedup_file:         ## deduplica um arquivo específico: make dedup_file FILE="data/raw/arquivo.jsonl"
+	@[ -n "$(FILE)" ] || (echo "uso: make dedup_file FILE=path/para/arquivo.jsonl"; exit 1)
+	python code/dedup_snapshot.py --path "$(shell dirname "$(FILE)")" --pattern "$(shell basename "$(FILE)")"
+
+dedup_raw_global:   ## dedup global entre TODOS os .jsonl (mantém a 1ª ocorrência)
+	python code/dedup_snapshot.py --path data/raw --pattern "*.jsonl" --scope global
+
+dedup_day:          ## dedup global só de um dia: make dedup_day DATE=YYYYMMDD
+	@[ -n "$(DATE)" ] || (echo "uso: make dedup_day DATE=YYYYMMDD"; exit 1)
+	python code/dedup_snapshot.py --path data/raw --pattern "one_$(DATE)_*.jsonl" --scope global
