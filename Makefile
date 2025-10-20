@@ -15,13 +15,14 @@ setup:              ## instala deps básicas
 	@echo "[setup] ok"
 
 pilot_100:          ## piloto rápido (100 artistas)
-	python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT)
+	@if [ "${COLLECT_MODE:-enabled}" = "enabled" ]; then 	python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT); fi
 	@[ -s logs/collector.jsonl ] && cp -f logs/collector.jsonl data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl || true
 
 collect:            ## coleta bruta integral
+	./scripts/collect_entrypoint.sh
 	OUTPUT_JSONL="data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl" \
 	set -a; [ -f .env ] && . ./.env; set +a
-	python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT)
+	@if [ "${COLLECT_MODE:-enabled}" = "enabled" ]; then 	python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT); fi
 	@[ -s logs/collector.jsonl ] && cp -f logs/collector.jsonl data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl || true
 sanity:             ## gera painéis de sanidade
 	[ -f code/sanity_dashboard.py ] && python code/sanity_dashboard.py --out reports/sanity || echo "sanity: script ausente, pulando"
@@ -190,7 +191,9 @@ backup_git: ## git add/commit/push do código (sem dados/segredos)
 	 CUR=$$(git rev-parse --abbrev-ref HEAD); [ "$$CUR" = "HEAD" ] && CUR=$$GIT_BRANCH; \
 	 git push $$GIT_REMOTE $$CUR:$$GIT_BRANCH
 .PHONY: backup_all
-backup_all: ## faz local + drive + git (em cadeia, via script)
+backup_all:
+	@./scripts/backup_all.sh
+	@./scripts/backup_all.sh
 	@SNAPSHOT=$${SNAPSHOT:-} REMOTE=$${REMOTE:-gdrive:Backups/funkbr-lyrics-evolution} \
 	 scripts/backup_all.sh
 
