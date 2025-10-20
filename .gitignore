@@ -68,3 +68,4 @@ data/tmp/
 logs/
 *.log
 logs/collector_progress*.json
+code/*.bak.*
