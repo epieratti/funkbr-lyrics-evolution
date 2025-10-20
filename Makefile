@@ -252,3 +252,7 @@ artifacts:
 ## Gera um pacote nomeado com a versão atual (alias conveniente)
 package-named: artifacts
 	@echo "Pacote pronto: $(ARTIFACT)"
+
+.PHONY: sanity_schema
+sanity_schema:
+	python scripts/diag/validate_schema_sample.py
