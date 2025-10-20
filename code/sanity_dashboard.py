@@ -1,8 +1,7 @@
 import os, glob, csv, time, statistics as st, argparse
 p=argparse.ArgumentParser(); p.add_argument("--out", default="reports/sanity"); a=p.parse_args()
 os.makedirs(a.out, exist_ok=True)
-rows=[]; sizes=[]
-today=time.strftime("%Y%m%d")
+rows=[]; sizes=[]; today=time.strftime("%Y%m%d")
 for fn in sorted(glob.glob("data/raw/*")):
     sz=os.path.getsize(fn); m=time.strftime("%F %T", time.localtime(os.path.getmtime(fn)))
     rows.append({"arquivo":os.path.basename(fn),"bytes":sz,"data_mod":m,"hoje":"SIM" if today in fn else "NAO"})

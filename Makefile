@@ -1,3 +1,5 @@
+SNAPSHOT ?= $(shell date +%Y%m%d)
+ARGS ?=
 # Makefile — FunkBR
 # Alvos mínimos e idempotentes
 
@@ -13,11 +15,13 @@ setup:              ## instala deps básicas
 	@echo "[setup] ok"
 
 pilot_100:          ## piloto rápido (100 artistas)
-	python code/coletar_discografia_funk_br.py --limit_artists 100 --snapshot $$(date +%Y%m%d)
+	python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT)
+	@[ -s logs/collector.jsonl ] && cp -f logs/collector.jsonl data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl || true
 
 collect:            ## coleta bruta integral
-	python code/coletar_discografia_funk_br.py --snapshot $$(date +%Y%m%d)
-
+	OUTPUT_JSONL="data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl" \
+	python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT)
+	@[ -s logs/collector.jsonl ] && cp -f logs/collector.jsonl data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl || true
 sanity:             ## gera painéis de sanidade
 	[ -f code/sanity_dashboard.py ] && python code/sanity_dashboard.py --out reports/sanity || echo "sanity: script ausente, pulando"
 
