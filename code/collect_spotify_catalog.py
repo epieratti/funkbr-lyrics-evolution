@@ -10,6 +10,41 @@ Escrita atômica em JSONL (evita 0 bytes).
 """
 import os, sys, time, json, argparse, tempfile, requests
 from typing import Dict, List, Any, Iterable
+
+# [patched] flexible dispatcher for collect_for_artist
+def _call_collect_for_artist(artist_query, **base):
+    import inspect
+    try:
+        sig = inspect.signature(collect_for_artist)
+    except Exception:
+        # se não conseguir inspecionar, cai no melhor esforço posicional
+        try:
+            return collect_for_artist(artist_query)
+        except TypeError:
+            raise
+
+    # mapear nome do artista para um parâmetro aceito
+    name_keys = ("artist_query", "artist", "query", "name", "artist_name")
+    kwargs = {}
+    for k in name_keys:
+        if k in sig.parameters:
+            kwargs[k] = artist_query
+            break
+    else:
+        # sem parâmetro nomeado: tenta posição
+        try:
+            return collect_for_artist(artist_query)
+        except TypeError:
+            # se nem posicional serve, propaga erro
+            raise
+
+    # incluir só kwargs suportados (ex.: H, out, snapshot etc.)
+    for k, v in base.items():
+        if k in sig.parameters:
+            kwargs[k] = v
+
+    return collect_for_artist(**kwargs)
+
 # ---------- utils ----------
 def load_env_file():
     p = os.path.join(os.getcwd(), ".env")
@@ -233,7 +268,7 @@ def cli_main():
       - cria diretórios de saída se necessário
       - para cada seed, chama 'collect_for_artist' (função já existente no script)
     Requisitos:
-      - função collect_for_artist(artist_query, out_writer, snapshot_tag, log) deve existir no arquivo
+      - função _call_collect_for_artist(artist_query, out_writer, snapshot_tag, log) deve existir no arquivo
     """
     import os, sys, json, time
 
