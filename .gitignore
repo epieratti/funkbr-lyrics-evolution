@@ -2,7 +2,6 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-logs/
 *.log
 *.tmp
 *.bak
@@ -43,8 +42,6 @@ tmp/
 # dados do projeto (mantém estrutura com .gitkeep)
 data/**
 !data/.gitkeep
-logs/**
-!logs/.gitkeep
 reports/**
 !reports/.gitkeep
 
@@ -56,15 +53,12 @@ scripts/*.bak*
 .env
 .env.*
 venv/
-logs/
 data/tmp/
 *.jsonl
 *.tar.gz
 /tmp/
 # <<< funkbr ignore guard <<<
-logs/
 *.log
-logs/collector_progress*.json
 code/*.bak.*
 
 # Ignora tudo na pasta processed_brcorpus
@@ -84,3 +78,10 @@ data/processed/*
 !data/raw/*.meta.json
 !data/processed/*.manifest
 !data/processed/*.meta.json
+
+# Ignora tudo em logs/
+logs/*
+
+# Exceto arquivos de incidentes e logs relevantes
+!logs/*.md
+!logs/*.log.latest
