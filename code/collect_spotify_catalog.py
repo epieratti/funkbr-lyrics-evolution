@@ -221,8 +221,9 @@ def main():
     print(f"[done] artistas={len(artists)} | linhas={total_rows} | tempo={dt:.1f}s")
     print(f"[ok] wrote -> {out_path}")
 # [patched] __main__ substituído para usar cli_main()
-if __name__ == "__main__":
+# [patched] (desabilitado guard __main__ original) if __name__ == "__main__":
     cli_main()
+cli_main()
 
 # === injected runner (idempotente) ============================================
 def cli_main():
@@ -291,3 +292,7 @@ def cli_main():
 
     print(f"[cli_main] finalizado. seeds_ok={count}, arquivo={out_path}")
 # === end injected runner ======================================================
+
+# [patched-tail] Guard padronizado
+if __name__ == "__main__":
+    cli_main()
