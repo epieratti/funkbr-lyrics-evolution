@@ -49,12 +49,12 @@ SEED_DIR = os.path.join(DATA_DIR, "seed")
 for d in (DATA_DIR, LOG_DIR, RAW_DIR, SEED_DIR):
     os.makedirs(d, exist_ok=True)
 
-SEED_FILE = os.path.join(SEED_DIR, "seed_artists.txt")
-OUTPUT_JSONL = os.path.join(RAW_DIR, "funk_br_discografia_raw.jsonl")
-OUTPUT_CSV = os.path.join(RAW_DIR, "funk_br_discografia_2005_2025.csv")
-LOG_FILE = os.path.join(LOG_DIR, "collector.log")
-DEBUG_LOG_FILE = os.path.join(LOG_DIR, "collector_debug.log")
-PROGRESS_FILE = os.path.join(RAW_DIR, "progress.json")
+SEED_FILE = os.getenv("SEED_FILE", os.path.join(SEED_DIR, "seed_artists.txt"))
+OUTPUT_JSONL = os.getenv("OUTPUT_JSONL", os.path.join(RAW_DIR, "funk_br_discografia_raw.jsonl"))
+OUTPUT_CSV = os.getenv("OUTPUT_CSV", os.path.join(RAW_DIR, "funk_br_discografia_2005_2025.csv"))
+LOG_FILE = os.getenv("LOG_FILE", os.path.join(LOG_DIR, "collector.log"))
+DEBUG_LOG_FILE = os.getenv("DEBUG_LOG_FILE", os.path.join(LOG_DIR, "collector_debug.log"))
+PROGRESS_FILE = os.getenv("PROGRESS_FILE", os.path.join(RAW_DIR, "progress.json"))
 
 JSONL_FILE = LOG_FILE.replace(".log", ".jsonl")
 
