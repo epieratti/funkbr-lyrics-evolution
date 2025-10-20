@@ -53,3 +53,15 @@ reports/**
 # ambiente virtual e backups locais
 venv/
 scripts/*.bak*
+
+# >>> funkbr ignore guard >>>
+.env
+.env.*
+venv/
+logs/
+data/raw/
+data/tmp/
+*.jsonl
+*.tar.gz
+/tmp/
+# <<< funkbr ignore guard <<<

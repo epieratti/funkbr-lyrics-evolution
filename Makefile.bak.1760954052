@@ -136,12 +136,12 @@ spoti_wait: ## aguarda Retry-After (429) e roda coletor em background (nohup)
 .PHONY: spoti_clean_wait
 spoti_clean_wait: ## mata sleepers antigos e agenda 1 coleta com lock
 	@echo "[clean] matando sleepers pendentes…"
-	@$(MAKE) -s spoti_kill_sleepers
+	@pkill -f 'bash -lc sleep .*collect_spotify_catalog.py' 2>/dev/null || true
+	@pkill -f 'spoti_wait_run.sh' 2>/dev/null || true
 	@echo "[eta] verificando Retry-After e ETA…"
 	@./scripts/spoti_wait_run.sh --check-only
 	@echo "[schedule] agendando 1 job com lock…"
 	@LIMIT="$${LIMIT:-25}" SNAP="$${SNAPSHOT:-$$(date +%Y%m%d)_SPOTIFY}" ./scripts/spoti_wait_run.sh --limit "$$LIMIT" --snap "$$SNAP" --extra "$${EXTRA:-60}"
-	@echo "[ok] feito. Veja: make spoti_ps  |  tail -f logs/auto_collect_$$(date +%F).log"
 .PHONY: spoti_ps
 spoti_ps: ## lista sleepers agendados do coletor
 	@pgrep -af -- 'sleep .*collect_spotify_catalog.py' || echo "(sem sleepers pendentes)"
@@ -159,37 +159,3 @@ spoti_wait_once: ## agenda um único job (com lock) respeitando Retry-After
 	echo "[schedule] agendando…"; \
 	LIMIT="$${LIMIT:-25}" SNAP="$${SNAPSHOT:-$$(date +%Y%m%d)_SPOTIFY}" ./scripts/spoti_wait_run.sh --limit "$$LIMIT" --snap "$$SNAP" --extra "$${EXTRA:-60}"
 	@echo "[tip] use: make spoti_ps  | tail -f logs/auto_collect_$$(date +%F).log"
-.PHONY: spoti_nuke_sleepers
-.PHONY: spoti_nuke_sleepers
-spoti_nuke_sleepers: ## mata sleepers ligados ao coletor (usa /proc e PGID)
-	@scripts/spoti_nuke_sleepers.sh
-.PHONY: backup_drive
-backup_drive: ## compacta (sem venv) e envia pro Google Drive
-	@STAMP=$$(date +%F_%H%M); TAR=/tmp/funkbr_$${STAMP}.tar.gz; \
-	cd $$PWD && echo "[tar] criando $$TAR…" && \
-	tar --exclude=venv -czf $$TAR . && \
-	echo "[upload] enviando $$TAR para Google Drive…" && \
-	rclone copy $$TAR gdrive:"Backups/funkbr-lyrics-evolution" --checkers 8 --transfers 4 --drive-chunk-size 64M --retries 5 --progress && \
-	echo "[ok] backup enviado com sucesso: $$TAR"
-.PHONY: backup_local
-backup_local: ## cria TAR local (sem venv/data/raw/logs) em /tmp
-	@STAMP=$$(date +%F_%H%M); TAR=/tmp/funkbr_$${STAMP}.tar.gz; \
-	 echo "[tar] criando $$TAR…"; \
-	 tar --exclude=venv --exclude=logs --exclude=data/raw --exclude=data/tmp --exclude=*.tar.gz\ -czf $$TAR .; \
-	 echo "[ok] $$TAR"
-.PHONY: backup_git
-backup_git: ## git add/commit/push do código (sem dados/segredos)
-	@GIT_REMOTE=$${GIT_REMOTE:-origin}; GIT_BRANCH=$${GIT_BRANCH:-main}; \
-	 git config user.name  >/dev/null 2>&1 || git config user.name  funkbr-bot; \
-	 git config user.email >/dev/null 2>&1 || git config user.email funkbr-bot@local; \
-	 if ! git remote get-url $$GIT_REMOTE >/dev/null 2>&1; then echo "⚠️ Remoto 22575GIT_REMOTE ausente — pulando"; exit 0; fi; \
-	 git add -A; \
-	 if git diff --cached --quiet; then echo "ℹ️ nada a commitar"; exit 0; fi; \
-	 MSG="backup: code snapshot $$(date +%F_%H%M)"; [ -n "$$SNAPSHOT" ] && MSG="$$MSG (snapshot=$$SNAPSHOT)"; \
-	 git commit -m "$$MSG"; \
-	 CUR=$$(git rev-parse --abbrev-ref HEAD); [ "$$CUR" = "HEAD" ] && CUR=$$GIT_BRANCH; \
-	 git push $$GIT_REMOTE $$CUR:$$GIT_BRANCH
-.PHONY: backup_all
-backup_all: ## faz local + drive + git (em cadeia, via script)
-	@SNAPSHOT=$${SNAPSHOT:-} REMOTE=$${REMOTE:-gdrive:Backups/funkbr-lyrics-evolution} \
-	 scripts/backup_all.sh
