@@ -222,8 +222,8 @@ def main():
     print(f"[ok] wrote -> {out_path}")
 # [patched] __main__ substituído para usar cli_main()
 # [patched] (desabilitado guard __main__ original) if __name__ == "__main__":
-    cli_main()
-cli_main()
+# [patched] removed stray top-level cli_main() call
+# [patched] removed stray top-level cli_main() call
 
 # === injected runner (idempotente) ============================================
 def cli_main():
@@ -294,5 +294,7 @@ def cli_main():
 # === end injected runner ======================================================
 
 # [patched-tail] Guard padronizado
+
+# [patched] canonical __main__ guard
 if __name__ == "__main__":
     cli_main()
