@@ -1,0 +1,254 @@
+SNAPSHOT ?= $(shell date +%Y%m%d)
+ARGS ?=
+# Makefile — FunkBR
+# Alvos mínimos e idempotentes
+
+.PHONY: help setup pilot_100 collect sanity clean dedup_raw dedup_file dedup_raw_global
+
+help:               ## lista comandos
+	@grep -E '^[a-zA-Z_-]+:.*?##' Makefile | awk 'BEGIN{FS=":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
+
+setup:              ## instala deps básicas
+	python -m pip install -U pip || true
+	[ -f requirements.txt ] && pip install -r requirements.txt || true
+	python -m spacy download pt_core_news_sm || true
+	@echo "[setup] ok"
+
+pilot_100:          ## piloto rápido (100 artistas)
+t@if [ "${COLLECT_MODE:-enabled}" = "enabled" ]; then 	python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT); fi
+	@[ -s logs/collector.jsonl ] && cp -f logs/collector.jsonl data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl || true
+
+collect:            ## coleta bruta integral
+	./scripts/collect_entrypoint.sh
+	OUTPUT_JSONL="data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl" \
+	set -a; [ -f .env ] && . ./.env; set +a
+t@if [ "${COLLECT_MODE:-enabled}" = "enabled" ]; then 	python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT); fi
+	@[ -s logs/collector.jsonl ] && cp -f logs/collector.jsonl data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl || true
+sanity:             ## gera painéis de sanidade
+	[ -f code/sanity_dashboard.py ] && python code/sanity_dashboard.py --out reports/sanity || echo "sanity: script ausente, pulando"
+
+clean:              ## remove temporários
+	rm -rf .cache __pycache__ tmp */__pycache__ 2>/dev/null || true
+
+dedup_raw:          ## deduplica todos os .jsonl (escopo por arquivo)
+	python code/dedup_snapshot.py --path data/raw --pattern "*.jsonl"
+
+dedup_file:         ## deduplica um arquivo específico
+	@[ -n "$(FILE)" ] || (echo "uso: make dedup_file FILE=path/para/arquivo.jsonl"; exit 1)
+	python code/dedup_snapshot.py --path "$(shell dirname "$(FILE)")" --pattern "$(shell basename "$(FILE)")"
+
+dedup_raw_global:   ## deduplica globalmente (mantém 1ª ocorrência em todo o conjunto)
+	python code/dedup_snapshot.py --path data/raw --pattern "*.jsonl" --scope global
+
+collect+dedup:      ## coleta e roda dedup global (1 comando)
+	./scripts/run_collect_with_dedup.sh $(shell date +%Y%m%d)
+
+pilot_100+dedup:    ## piloto (100) e dedup global
+	LIMIT=100 ./scripts/run_pilot_with_dedup.sh $(shell date +%Y%m%d)
+
+health: ## checa cron, logs de hoje, jsonl e backup
+	@echo "== CRON lines ==" && crontab -l | sed -n '1,12p'
+	@echo "== Cron status ==" && systemctl is-active cron
+	@echo "== Logs dir ==" && ls -ld logs || true
+	@echo "== Logs de hoje ==" && ls -lh logs/*$$(date +%F)*.log 2>/dev/null || echo "(ainda sem logs de hoje)"
+	@END_HOUR_LOCAL=06 scripts/health_zero_byte_guard.sh data/raw || true
+	@echo "== Backup usage ==" && du -sh /mnt/backup/raw /mnt/backup/processed 2>/dev/null || true
+
+# Cria/atualiza rascunho de release no GitHub
+# Uso:
+#   make release_draft VERSION=v0.2.0
+
+# Cria/atualiza rascunho de release no GitHub
+# Uso:
+#   make release_draft VERSION=v0.2.0
+# Anexa automaticamente os arquivos mais recentes de dados e sanity (se existirem)
+# Cria/atualiza rascunho de release no GitHub
+#   make release_draft VERSION=v0.2.0
+# - Exige RELEASE_NOTES_<VERSION>_draft.md
+# - Coleta até 3 .jsonl (data/raw) e 3 .csv (reports/sanity)
+# - Prefixa cada arquivo com snapshot YYYYMMDD_HHMM_ antes de enviar
+release_draft: ## cria ou atualiza release draft com prefixo de snapshot
+	@if [ -z "$(VERSION)" ]; then echo "Uso: make release_draft VERSION=vX.Y.Z"; exit 1; fi
+	@if [ ! -f "RELEASE_NOTES_$(VERSION)_draft.md" ]; then echo "Arquivo RELEASE_NOTES_$(VERSION)_draft.md não encontrado."; exit 1; fi
+	@echo "== Criando/atualizando release $(VERSION) no GitHub =="
+	@gh release create $(VERSION) --draft --title "$(VERSION) — em desenvolvimento" --notes-file RELEASE_NOTES_$(VERSION)_draft.md 2>/dev/null \
+	 || gh release edit $(VERSION) --draft --title "$(VERSION) — em desenvolvimento" --notes-file RELEASE_NOTES_$(VERSION)_draft.md
+	@echo "== Selecionando artefatos recentes =="
+	@RAW_LATEST=$$(ls -t data/raw/*.jsonl 2>/dev/null | head -n 3); \
+	SANITY_LATEST=$$(ls -t reports/sanity/*.csv 2>/dev/null | head -n 3); \
+	SNAP=$$(date +%Y%m%d_%H%M); \
+	TMP=$$(mktemp -d); \
+	if [ -n "$$RAW_LATEST$$SANITY_LATEST" ]; then \
+		echo "Staging em $$TMP (prefixo: $$SNAP_)"; \
+		for f in $$RAW_LATEST $$SANITY_LATEST; do \
+			[ -f "$$f" ] || continue; \
+			bn=$$(basename "$$f"); \
+			cp "$$f" "$$TMP/$$SNAP"_$$bn; \
+		done; \
+		if compgen -G "$$TMP/*" > /dev/null; then \
+			echo "== Enviando assets prefixados =="; \
+			gh release upload $(VERSION) $$TMP/* --clobber; \
+		else \
+		fi; \
+		rm -rf "$$TMP"; \
+	else \
+		echo "(nenhum .jsonl/.csv recente encontrado)"; \
+	fi
+	@echo "✓ Release draft atualizada: $(VERSION)"
+spotify_ready: ## checklist automatizado p/ pipeline Spotify
+	@./scripts/spotify_ready.sh
+.PHONY: lyrics
+lyrics: ## baixa/atualiza letras (se script existir)
+	@set -e; set -a; [ -f .env ] && . ./.env; set +a; \
+	if [ -f code/run_lyrics.py ]; then \
+		echo "[lyrics] rodando code/run_lyrics.py …"; \
+		OUTPUT_JSONL="data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl" \
+		python code/run_lyrics.py $(ARGS) --snapshot $(SNAPSHOT); \
+	elif [ -f code/lyrics_pipeline.py ]; then \
+		echo "[lyrics] rodando code/lyrics_pipeline.py …"; \
+		OUTPUT_JSONL="data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl" \
+		python code/lyrics_pipeline.py $(ARGS) --snapshot $(SNAPSHOT); \
+	else \
+		echo "[lyrics] nenhum script encontrado (code/run_lyrics.py ou code/lyrics_pipeline.py)."; \
+		exit 2; \
+	fi
+.PHONY: process
+process: ## processamento + sanity
+	@set -e; set -a; [ -f .env ] && . ./.env; set +a; \
+	if grep -q '^sanity:' Makefile; then \
+		echo "[process] chamando sanity …"; \
+		$(MAKE) sanity; \
+	else \
+		echo "[process] alvo sanity não encontrado no Makefile."; \
+		exit 2; \
+	fi
+
+.PHONY: collect_spotify
+collect_spotify: ## coleta catálogo Spotify (artist/album/track c/ ISRC/UPC)
+	@set -e; set -a; [ -f .env ] && . ./.env; set +a; \
+	OUTPUT_JSONL="data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl" \
+	python code/collect_spotify_catalog.py $(ARGS) --snapshot $(SNAPSHOT)
+
+spoti_quota_check:
+	@./scripts/spotify_quota_check.sh
+.PHONY: spoti_wait
+spoti_wait: ## aguarda Retry-After (429) e roda coletor em background (nohup)
+	@./scripts/spoti_wait_run.sh --limit $${LIMIT:-50}
+.PHONY: spoti_clean_wait
+spoti_clean_wait: ## mata sleepers antigos e agenda 1 coleta com lock
+	@echo "[clean] matando sleepers pendentes…"
+	@$(MAKE) -s spoti_kill_sleepers
+	@echo "[eta] verificando Retry-After e ETA…"
+	@./scripts/spoti_wait_run.sh --check-only
+	@echo "[schedule] agendando 1 job com lock…"
+	@LIMIT="$${LIMIT:-25}" SNAP="$${SNAPSHOT:-$$(date +%Y%m%d)_SPOTIFY}" ./scripts/spoti_wait_run.sh --limit "$$LIMIT" --snap "$$SNAP" --extra "$${EXTRA:-60}"
+	@echo "[ok] feito. Veja: make spoti_ps  |  tail -f logs/auto_collect_$$(date +%F).log"
+.PHONY: spoti_ps
+spoti_ps: ## lista sleepers agendados do coletor
+	@pgrep -af -- 'sleep .*collect_spotify_catalog.py' || echo "(sem sleepers pendentes)"
+.PHONY: spoti_kill_sleepers
+spoti_kill_sleepers: ## encerra sleepers que irão chamar o coletor (não afeta outros processos)
+	@echo "[kill] encerrando sleepers do coletor…"
+	@pids="$$(pgrep -f -- 'sleep [0-9]+; .*collect_spotify_catalog.py' || true)"; \
+	if [ -n "$$pids" ]; then kill $$pids || true; else echo "(nenhum para matar)"; fi
+	@echo "[ok] done."
+.PHONY: spoti_wait_once
+spoti_wait_once: ## agenda um único job (com lock) respeitando Retry-After
+	@set -e; \
+	echo "[eta] checando Retry-After/ETA…"; \
+	./scripts/spoti_wait_run.sh --check-only; \
+	echo "[schedule] agendando…"; \
+	LIMIT="$${LIMIT:-25}" SNAP="$${SNAPSHOT:-$$(date +%Y%m%d)_SPOTIFY}" ./scripts/spoti_wait_run.sh --limit "$$LIMIT" --snap "$$SNAP" --extra "$${EXTRA:-60}"
+	@echo "[tip] use: make spoti_ps  | tail -f logs/auto_collect_$$(date +%F).log"
+.PHONY: spoti_nuke_sleepers
+.PHONY: spoti_nuke_sleepers
+spoti_nuke_sleepers: ## mata sleepers ligados ao coletor (usa /proc e PGID)
+	@scripts/spoti_nuke_sleepers.sh
+.PHONY: backup_drive
+backup_drive: ## compacta (sem venv) e envia pro Google Drive
+	@STAMP=$$(date +%F_%H%M); TAR=/tmp/funkbr_$${STAMP}.tar.gz; \
+	cd $$PWD && echo "[tar] criando $$TAR…" && \
+	tar --exclude=venv -czf $$TAR . && \
+	echo "[upload] enviando $$TAR para Google Drive…" && \
+	rclone copy $$TAR gdrive:"Backups/funkbr-lyrics-evolution" --checkers 8 --transfers 4 --drive-chunk-size 64M --retries 5 --progress && \
+	echo "[ok] backup enviado com sucesso: $$TAR"
+.PHONY: backup_local
+backup_local: ## cria TAR local (sem venv/data/raw/logs) em /tmp
+	@STAMP=$$(date +%F_%H%M); TAR=/tmp/funkbr_$${STAMP}.tar.gz; \
+	 echo "[tar] criando $$TAR…"; \
+	 tar --exclude=venv --exclude=logs --exclude=data/raw --exclude=data/tmp --exclude=*.tar.gz\ -czf $$TAR .; \
+	 echo "[ok] $$TAR"
+.PHONY: backup_git
+backup_git: ## git add/commit/push do código (sem dados/segredos)
+	@GIT_REMOTE=$${GIT_REMOTE:-origin}; GIT_BRANCH=$${GIT_BRANCH:-main}; \
+	 git config user.name  >/dev/null 2>&1 || git config user.name  funkbr-bot; \
+	 git config user.email >/dev/null 2>&1 || git config user.email funkbr-bot@local; \
+	 if ! git remote get-url $$GIT_REMOTE >/dev/null 2>&1; then echo "⚠️ Remoto 22575GIT_REMOTE ausente — pulando"; exit 0; fi; \
+	 git add -A; \
+	 if git diff --cached --quiet; then echo "ℹ️ nada a commitar"; exit 0; fi; \
+	 MSG="backup: code snapshot $$(date +%F_%H%M)"; [ -n "$$SNAPSHOT" ] && MSG="$$MSG (snapshot=$$SNAPSHOT)"; \
+	 git commit -m "$$MSG"; \
+	 CUR=$$(git rev-parse --abbrev-ref HEAD); [ "$$CUR" = "HEAD" ] && CUR=$$GIT_BRANCH; \
+	 git push $$GIT_REMOTE $$CUR:$$GIT_BRANCH
+.PHONY: backup_all
+backup_all:
+	@./scripts/backup_all.sh
+	@./scripts/backup_all.sh
+	@SNAPSHOT=$${SNAPSHOT:-} REMOTE=$${REMOTE:-gdrive:Backups/funkbr-lyrics-evolution} \
+	 scripts/backup_all.sh
+
+.PHONY: backup_drive_all
+backup_drive_all: ## (Drive) backup TOTAL: tar + mirror completo (inclui .env, venv, data, logs etc.)
+	@SNAPSHOT=$${SNAPSHOT:-$$(date +%Y%m%d_%H%M)} \
+	REMOTE=$${REMOTE:-gdrive:Backups/funkbr-lyrics-evolution} \
+	scripts/backup_drive_all.sh
+.PHONY: backup_drive_tar
+backup_drive_tar: ## gera .tar.gz (sem venv/.git) e envia p/ Google Drive
+	@bash scripts/backup_drive_tar.sh
+.PHONY: backup_all_daily
+backup_all_daily: ## executa scripts/backup_all_daily.sh imediatamente
+	@bash scripts/backup_all_daily.sh
+
+.PHONY: register_snapshot
+register_snapshot: ## registra SHA256 e (opcional) caminho no Drive
+	@[ -n "$(FILE)" ] || (echo "uso: make register_snapshot FILE=path [DRIVE=remote]"; exit 1)
+	@./scripts/register_snapshot.sh "$(FILE)" "$(DRIVE)"
+
+# === Version-aware packaging ===
+VERSION_FILE := VERSION
+VERSION := $(shell cat $(VERSION_FILE))
+DATE := $(shell date +%F)
+
+# nomes padronizados (versão + data)
+ARTIFACT := funkbr-$(VERSION)-$(DATE).tar.gz
+CORPUS_FULL := processed_brcorpus/brcorpus_$(DATE).jsonl
+CORPUS_PT := processed_brcorpus/brcorpus_$(DATE)_pt.jsonl
+PKG_DIR := /tmp/funkbr_pkg
+
+.PHONY: print-version artifacts package-named
+
+## Mostra a versão atual (lida do arquivo VERSION)
+print-version:
+	@echo $(VERSION)
+
+## Junta artefatos de release de hoje em /tmp/funkbr_pkg e empacota o tar.gz versionado
+artifacts:
+	@mkdir -p $(PKG_DIR)
+	@echo "Coletando artefatos para $(VERSION) ($(DATE)) em $(PKG_DIR)..."
+	@if [ -s "$(CORPUS_FULL)" ]; then cp -v "$(CORPUS_FULL)" "$(PKG_DIR)/"; else echo "Aviso: $(CORPUS_FULL) não encontrado/sem conteúdo"; fi
+	@if [ -s "$(CORPUS_PT)" ]; then cp -v "$(CORPUS_PT)" "$(PKG_DIR)/"; else echo "Aviso: $(CORPUS_PT) não encontrado/sem conteúdo"; fi
+	@echo "Empacotando $(ARTIFACT)..."
+	tar -czf "$(ARTIFACT)" \
+		README.md \
+		Makefile \
+		.gitignore \
+		crontab/funkbr.cron \
+		scripts/with_lock.sh \
+		scripts/backup_all_daily.sh \
+		scripts/diag/run_full_health.sh \
+		scripts/log_retention.sh
+	@echo "OK: $(ARTIFACT)"
+
+## Gera um pacote nomeado com a versão atual (alias conveniente)
+package-named: artifacts
+	@echo "Pacote pronto: $(ARTIFACT)"
