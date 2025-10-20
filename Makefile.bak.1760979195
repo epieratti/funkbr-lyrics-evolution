@@ -15,14 +15,14 @@ setup:              ## instala deps básicas
 	@echo "[setup] ok"
 
 pilot_100:          ## piloto rápido (100 artistas)
-	@if [ "${COLLECT_MODE:-enabled}" = "enabled" ]; then 	python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT); fi
+	python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT)
 	@[ -s logs/collector.jsonl ] && cp -f logs/collector.jsonl data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl || true
 
 collect:            ## coleta bruta integral
 	./scripts/collect_entrypoint.sh
 	OUTPUT_JSONL="data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl" \
 	set -a; [ -f .env ] && . ./.env; set +a
-	@if [ "${COLLECT_MODE:-enabled}" = "enabled" ]; then 	python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT); fi
+	python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT)
 	@[ -s logs/collector.jsonl ] && cp -f logs/collector.jsonl data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl || true
 sanity:             ## gera painéis de sanidade
 	[ -f code/sanity_dashboard.py ] && python code/sanity_dashboard.py --out reports/sanity || echo "sanity: script ausente, pulando"
@@ -252,7 +252,3 @@ artifacts:
 ## Gera um pacote nomeado com a versão atual (alias conveniente)
 package-named: artifacts
 	@echo "Pacote pronto: $(ARTIFACT)"
-
-.PHONY: sanity_schema
-sanity_schema:
-	python scripts/diag/validate_schema_sample.py

@@ -7,3 +7,6 @@ bash "$ROOT/scripts/diag/summarize_corpus.sh"
 bash "$ROOT/scripts/diag/check_coleta_dia.sh"
 bash "$ROOT/scripts/diag/logrotate_status.sh"
 bash "$ROOT/scripts/diag/check_wrapper_cron.sh"
+
+# blocked-mode hint
+[ -f .env ] && . ./.env; if [ "${COLLECT_MODE:-enabled}" = "disabled" ]; then echo "⚠️  HEALTH NOTE: coleta em BLOCKED MODE (mock)."; fi

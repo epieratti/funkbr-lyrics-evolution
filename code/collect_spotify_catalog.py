@@ -169,7 +169,7 @@ def main():
     H = {"Authorization": f"Bearer {tok}"}
 
 
-# def GET(u, **q):
+def GET(u, **q):
     """GET com retry/backoff:
     - 429 → respeita Retry-After (segundos)
     - 5xx → backoff exponencial + jitter
@@ -220,74 +220,5 @@ def main():
     dt=time.time()-t0
     print(f"[done] artistas={len(artists)} | linhas={total_rows} | tempo={dt:.1f}s")
     print(f"[ok] wrote -> {out_path}")
-# [patched] __main__ substituído para usar cli_main()
 if __name__ == "__main__":
-    cli_main()
-
-# === injected runner (idempotente) ============================================
-def cli_main():
-    """
-    Runner estável:
-      - lê seeds de 'seed/seeds_raw.txt' (1 por linha; ignora vazias/#)
-      - cria diretórios de saída se necessário
-      - para cada seed, chama 'collect_for_artist' (função já existente no script)
-    Requisitos:
-      - função collect_for_artist(artist_query, out_writer, snapshot_tag, log) deve existir no arquivo
-    """
-    import os, sys, json, time
-
-    # Flags simples: --snapshot <TAG> (opcional)
-    snapshot = None
-    argv = sys.argv[1:]
-    if '--snapshot' in argv:
-        i = argv.index('--snapshot')
-        if i+1 < len(argv): snapshot = argv[i+1]
-
-    if not snapshot:
-        snapshot = time.strftime("NOW_%Y%m%d_%H%M")
-
-    repo_top = os.path.abspath(os.path.dirname(__file__) + "/..")
-    seeds_file = os.path.join(repo_top, "seed", "seeds_raw.txt")
-    out_dir = os.path.join(repo_top, "data", "raw")
-    os.makedirs(out_dir, exist_ok=True)
-
-    out_path = os.path.join(out_dir, f"funk_br_discografia_raw_{snapshot}.jsonl")
-    print(f"[cli_main] seeds: {seeds_file}")
-    print(f"[cli_main] out:   {out_path}")
-
-    # Leitura de seeds
-    if not os.path.exists(seeds_file):
-        print(f"[cli_main] AVISO: arquivo de seeds não encontrado: {seeds_file}", file=sys.stderr)
-        print("[cli_main] nada a fazer.")
-        return
-
-    with open(seeds_file, "r", encoding="utf-8") as fh:
-        seeds = [ln.strip() for ln in fh if ln.strip() and not ln.strip().startswith("#")]
-
-    if not seeds:
-        print("[cli_main] AVISO: nenhum seed válido encontrado.")
-        return
-
-    # verifica existência da função collect_for_artist no módulo atual
-    try:
-        fn = globals().get("collect_for_artist", None)
-        if not callable(fn):
-            print("[cli_main] ERRO: função collect_for_artist não encontrada no script.", file=sys.stderr)
-            sys.exit(2)
-    except Exception as e:
-        print(f"[cli_main] ERRO ao acessar collect_for_artist: {e}", file=sys.stderr)
-        sys.exit(2)
-
-    # abre writer de saída
-    count = 0
-    with open(out_path, "w", encoding="utf-8") as w:
-        for seed in seeds:
-            try:
-                fn(artist_query=seed, out_writer=w, snapshot_tag=snapshot, log=print)
-                count += 1
-            except Exception as e:
-                print(f"[cli_main] ERRO seed='{seed}': {e}", file=sys.stderr)
-                continue
-
-    print(f"[cli_main] finalizado. seeds_ok={count}, arquivo={out_path}")
-# === end injected runner ======================================================
+    main()
