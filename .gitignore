@@ -65,3 +65,6 @@ data/tmp/
 *.tar.gz
 /tmp/
 # <<< funkbr ignore guard <<<
+logs/
+*.log
+logs/collector_progress*.json
