@@ -1,38 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
+TOP="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+out_meta="$TOP/samples/metadata"
+out_logs="$TOP/samples/logs"
+mkdir -p "$out_meta" "$out_logs"
 
-mkdir -p samples/{metadata,logs}
+# 1) Mini metadata do corpus (se existir), limit 200 linhas
+for f in "$TOP"/processed_brcorpus/brcorpus_*.jsonl; do
+  [ -f "$f" ] || continue
+  base="$(basename "$f")"
+  head -n 200 "$f" > "$out_meta/${base%.jsonl}.sample.jsonl"
+done
 
-# Fonte preferencial: JSONL do dia em processed_brcorpus/
-# Fallback: qualquer brcorpus_*.jsonl disponível.
-FULL_SRC="$(ls -1 processed_brcorpus/brcorpus_*.jsonl 2>/dev/null | sort | tail -n1 || true)"
-PT_SRC="$(ls -1 processed_brcorpus/brcorpus_*_pt.jsonl 2>/dev/null | sort | tail -n1 || true)"
-
-if [[ -n "${FULL_SRC}" ]]; then
-  head -n 200 "$FULL_SRC" | jq -c 'del(.artist_id, .album_id, .track_id, .isrc, .album_upc, .album_upc_str, .ts, .ingestion_ts, .country_score, .isrc_score) | .pt_strict? as $x | del(.pt_strict,.es_strict)' \
-    > samples/metadata/brcorpus_sample.jsonl || true
-fi
-
-if [[ -n "${PT_SRC}" ]]; then
-  head -n 200 "$PT_SRC" | jq -c 'del(.artist_id, .album_id, .track_id, .isrc, .album_upc, .album_upc_str, .ts, .ingestion_ts, .country_score, .isrc_score) | .pt_strict? as $x | del(.pt_strict,.es_strict)' \
-    > samples/metadata/brcorpus_pt_sample.jsonl || true
-fi
-
-# Logs — preferir health do dia; caso ausente, gera um log sintético.
-if ls -1 logs/health_*.log >/dev/null 2>&1; then
-  HL="$(ls -1 logs/health_*.log | sort | tail -n1)"
-  tail -n 100 "$HL" | sed -E 's#/root/funkbr-lyrics-evolution#REDACTED_PROJECT_DIR#g' \
-    > samples/logs/health_example.log
-else
-  cat > samples/logs/health_example.log <<'EOT'
-2025-01-01 06:50:00 HEALTH START
-- collector: OK
-- process:   OK
-- backup:    OK (dry-run)
-- drive:     OK (dry-run)
-- disk:      9% used
-HEALTH OK
-EOT
-fi
+# 2) Mini logs: só linhas não vazias e primeiras 200
+for f in "$TOP"/logs/*.log; do
+  [ -f "$f" ] || continue
+  base="$(basename "$f")"
+  awk 'NF>0' "$f" | head -n 200 > "$out_logs/${base%.log}.sample.log"
+done
 
 echo "Samples geradas em samples/{metadata,logs}"
