@@ -1,0 +1,8 @@
+# fix: restringe black ao código novo
+[tool.black]
+target-version = ["py311"]
+line-length = 100
+extend-exclude = '''(
+  code/(coletar_discografia_funk_br|coletar_discografia_funk_br.py.bak_autopatch|coletar_discografia_funk_br.py.bak_textpatch|run_one_artist_full|run_pilot|dedupe_albums_tracks|enrich_latest|dedup_snapshot|utils/io_safe|utils/spotify_collect)\.py
+)
+'''

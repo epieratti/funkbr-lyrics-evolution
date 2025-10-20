@@ -1,224 +1,285 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-Coletor Spotify (sem endpoints de áudio) — pega:
-- Artista: followers, popularity, genres
-- Álbum: label, release_date, release_date_precision, album_type, total_tracks, UPC
-- Faixa: duration_ms, explicit, track_number, disc_number, popularity, preview_url,
-         available_markets, available_in_BR, n_markets, ISRC
-Escrita atômica em JSONL (evita 0 bytes).
-"""
-import os, sys, time, json, argparse, tempfile, requests
-from typing import Dict, List, Any, Iterable
-# ---------- utils ----------
-def load_env_file():
-    p = os.path.join(os.getcwd(), ".env")
-    if os.path.isfile(p):
-        try:
-            with open(p, encoding="utf-8") as f:
-                for line in f:
-                    line=line.strip()
-                    if not line or line.startswith("#") or "=" not in line:
-                        continue
-                    k,v=line.split("=",1)
-                    k=k.strip()
-                    v=v.strip().strip('"').strip("'")
-                    v=os.path.expandvars(v)
-                    os.environ.setdefault(k, v)
-        except Exception:
-            pass
-def chunked(seq: Iterable[Any], n: int) -> Iterable[List[Any]]:
-    buf=[]
-    for x in seq:
-        buf.append(x)
-        if len(buf)>=n:
-            yield buf
-            buf=[]
-    if buf:
-        yield buf
-def atomic_append_jsonl(path: str, obj: Dict[str, Any]) -> None:
-    d = os.path.dirname(path) or "."
-    os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=".tmp_jsonl_", dir=d)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(json.dumps(obj, ensure_ascii=False) + "\n")
-    with open(path, "ab") as out, open(tmp, "rb") as src:
-        out.write(src.read())
-    os.remove(tmp)
-def GET(headers: Dict[str,str], url: str, **params) -> Dict[str, Any]:
-    r = requests.get(url, headers=headers, params=params, timeout=30)
-    r.raise_for_status()
-    return r.json()
-# ---------- coleta ----------
-def collect_for_artist(h, q: str, market: str, out_path: str):
-    # 1) /search -> artista
-    sr = GET(h, "https://api.spotify.com/v1/search",
-             q=q, type="artist", limit=1, market=market)
-    items = sr.get("artists", {}).get("items", [])
+"""Spotify catalog collector with retry, locking and dry-run support."""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import json
+import os
+import sys
+import time
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Dict, Iterable, Iterator, List, Optional
+
+try:
+    from spotify_client import SpotifyClient, SpotifyClientError
+except ImportError:  # pragma: no cover - fallback when executed as module
+    from .spotify_client import SpotifyClient, SpotifyClientError  # type: ignore[no-redef]
+
+
+def load_env_file(env_path: Path) -> None:
+    """Load a minimal set of environment variables from .env if missing."""
+    if not env_path.exists():
+        return
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key in {"SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET"} and key not in os.environ:
+            os.environ[key] = os.path.expandvars(value)
+
+
+def chunked(seq: Iterable[Any], size: int) -> Iterator[List[Any]]:
+    bucket: List[Any] = []
+    for item in seq:
+        bucket.append(item)
+        if len(bucket) >= size:
+            yield bucket
+            bucket = []
+    if bucket:
+        yield bucket
+
+
+def atomic_append_jsonl(path: Path, row: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.parent / f".{path.name}.tmp"
+    with tmp_path.open("w", encoding="utf-8") as handle:
+        json.dump(row, handle, ensure_ascii=False)
+        handle.write("\n")
+    with path.open("ab") as target, tmp_path.open("rb") as src:
+        target.write(src.read())
+    tmp_path.unlink(missing_ok=True)
+
+
+def json_log(event: str, **payload: Any) -> None:
+    data = {"event": event, "ts": int(time.time()), **payload}
+    print(json.dumps(data, ensure_ascii=False), flush=True)
+
+
+@contextmanager
+def exclusive_lock(lock_path: Path) -> Iterator[None]:
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        json_log("lock_acquired", lock=str(lock_path))
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def collect_artist_catalog(
+    client: SpotifyClient,
+    artist_query: str,
+    market: str,
+    out_path: Path,
+) -> int:
+    search_payload = client.get(
+        "https://api.spotify.com/v1/search",
+        params={"q": artist_query, "type": "artist", "limit": 1, "market": market},
+    )
+    items = search_payload.get("artists", {}).get("items", [])
     if not items:
-        atomic_append_jsonl(out_path, {"artist_query": q, "warning": "artist_not_found",
-                                       "market": market, "ts": int(time.time()), "_type": "warn"})
+        warn_row = {
+            "_type": "warn",
+            "artist_query": artist_query,
+            "market": market,
+            "warning": "artist_not_found",
+            "ts": int(time.time()),
+        }
+        atomic_append_jsonl(out_path, warn_row)
+        json_log("artist_not_found", query=artist_query, market=market)
         return 0
-    ad = GET(h, f"https://api.spotify.com/v1/artists/{items[0]['id']}")
-    aid = ad.get("id")
+
+    artist_id = items[0]["id"]
+    artist_detail = client.get(f"https://api.spotify.com/v1/artists/{artist_id}")
     artist_row = {
         "_type": "artist_meta",
-        "artist_query": q,
-        "artist_id": aid,
-        "artist_name": ad.get("name"),
-        "followers": (ad.get("followers") or {}).get("total"),
-        "popularity": ad.get("popularity"),
-        "genres": ",".join(ad.get("genres") or []),
+        "artist_query": artist_query,
+        "artist_id": artist_id,
+        "artist_name": artist_detail.get("name"),
+        "followers": (artist_detail.get("followers") or {}).get("total"),
+        "popularity": artist_detail.get("popularity"),
+        "genres": ",".join(artist_detail.get("genres") or []),
         "market": market,
         "ts": int(time.time()),
-        "year_start": 2005,
-        "year_end": 2025,
     }
     atomic_append_jsonl(out_path, artist_row)
-    # 2) /artists/{id}/albums (pagina)
-    albums = []
-    url = f"https://api.spotify.com/v1/artists/{aid}/albums"
-    params = {"include_groups": "album,single,appears_on,compilation",
-              "market": market, "limit": 50}
-    while True:
-        r = GET(h, url, **params)
-        albums += r.get("items", [])
-        url = r.get("next") or None
-        if not url:
-            break
-    # 3) /v1/albums?ids=… (UPC/label/release_date/album_type/total_tracks)
-    album_meta = {}
-    for batch in chunked([a["id"] for a in albums], 20):
-        det = GET(h, "https://api.spotify.com/v1/albums", ids=",".join(batch))
-        for a in det.get("albums", []) or []:
-            ext = a.get("external_ids") or {}
-            album_meta[a["id"]] = {
-                "upc": ext.get("upc"),
-                "label": a.get("label"),
-                "release_date": a.get("release_date"),
-                "release_date_precision": a.get("release_date_precision"),
-                "album_type": a.get("album_type"),
-                "total_tracks": a.get("total_tracks"),
+    json_log("artist_collected", artist_id=artist_id, query=artist_query)
+
+    albums: List[Dict[str, Any]] = []
+    next_url: Optional[str] = f"https://api.spotify.com/v1/artists/{artist_id}/albums"
+    params = {
+        "include_groups": "album,single,appears_on,compilation",
+        "market": market,
+        "limit": 50,
+    }
+    while next_url:
+        page = client.get(next_url, params=params)
+        params = {}
+        albums.extend(page.get("items", []) or [])
+        next_url = page.get("next")
+
+    album_meta: Dict[str, Dict[str, Any]] = {}
+    for batch in chunked([alb["id"] for alb in albums], 20):
+        details = client.get("https://api.spotify.com/v1/albums", params={"ids": ",".join(batch)})
+        for album in details.get("albums", []) or []:
+            ext = album.get("external_ids") or {}
+            album_meta[album["id"]] = {
+                "album_label": album.get("label"),
+                "album_release_date": album.get("release_date"),
+                "album_release_precision": album.get("release_date_precision"),
+                "album_type": album.get("album_type"),
+                "album_total_tracks": album.get("total_tracks"),
+                "album_upc": ext.get("upc"),
             }
-    # 4) /albums/{id}/tracks + /v1/tracks?ids=… (ISRC e campos de faixa)
-    tids = []
-    for alb in albums:
-        tr = GET(h, f"https://api.spotify.com/v1/albums/{alb['id']}/tracks",
-                 market=market, limit=50)
-        for t in tr.get("items", []) or []:
-            tids.append((alb["id"], t["id"]))
-    rows = 0
-    for batch in chunked([tid for _,tid in tids], 50):
-        det = GET(h, "https://api.spotify.com/v1/tracks", ids=",".join(batch))
-        for t in det.get("tracks", []) or []:
-            alb_id = t["album"]["id"]
-            markets = t.get("available_markets") or []
+
+    track_pairs: List[Dict[str, str]] = []
+    for album in albums:
+        album_tracks = client.get(
+            f"https://api.spotify.com/v1/albums/{album['id']}/tracks",
+            params={"market": market, "limit": 50},
+        )
+        for track in album_tracks.get("items", []) or []:
+            track_pairs.append({"album_id": album["id"], "track_id": track["id"]})
+
+    total_rows = 0
+    for batch in chunked([pair["track_id"] for pair in track_pairs], 50):
+        track_details = client.get(
+            "https://api.spotify.com/v1/tracks", params={"ids": ",".join(batch)}
+        )
+        for track in track_details.get("tracks", []) or []:
+            album_id = track.get("album", {}).get("id")
+            markets = track.get("available_markets") or []
             row = {
                 "_type": "track_row",
-                "artist_id": aid,
-                "artist_query": q,
-                "album_id": alb_id,
-                "album_upc": album_meta.get(alb_id, {}).get("upc"),
-                "album_label": album_meta.get(alb_id, {}).get("label"),
-                "album_release_date": album_meta.get(alb_id, {}).get("release_date"),
-                "album_release_date_precision": album_meta.get(alb_id, {}).get("release_date_precision"),
-                "album_type": album_meta.get(alb_id, {}).get("album_type"),
-                "album_total_tracks": album_meta.get(alb_id, {}).get("total_tracks"),
-                "track_id": t["id"],
-                "track_name": t.get("name"),
-                "duration_ms": t.get("duration_ms"),
-                "explicit": t.get("explicit"),
-                "track_number": t.get("track_number"),
-                "disc_number": t.get("disc_number"),
-                "track_popularity": t.get("popularity"),
-                "preview_url": t.get("preview_url"),
-                "available_in_BR": ("BR" in markets),
+                "artist_id": artist_id,
+                "artist_query": artist_query,
+                "album_id": album_id,
+                "album_label": album_meta.get(album_id, {}).get("album_label"),
+                "album_release_date": album_meta.get(album_id, {}).get("album_release_date"),
+                "album_release_precision": album_meta.get(album_id, {}).get(
+                    "album_release_precision"
+                ),
+                "album_type": album_meta.get(album_id, {}).get("album_type"),
+                "album_total_tracks": album_meta.get(album_id, {}).get("album_total_tracks"),
+                "album_upc": album_meta.get(album_id, {}).get("album_upc"),
+                "track_id": track.get("id"),
+                "track_name": track.get("name"),
+                "duration_ms": track.get("duration_ms"),
+                "explicit": track.get("explicit"),
+                "track_number": track.get("track_number"),
+                "disc_number": track.get("disc_number"),
+                "track_popularity": track.get("popularity"),
+                "preview_url": track.get("preview_url"),
+                "available_in_BR": "BR" in markets,
                 "n_markets": len(markets),
                 "available_markets": markets,
-                "isrc": (t.get("external_ids") or {}).get("isrc"),
+                "isrc": (track.get("external_ids") or {}).get("isrc"),
                 "market": market,
                 "ts": int(time.time()),
             }
             atomic_append_jsonl(out_path, row)
-            rows += 1
-    return rows
-def main():
-    load_env_file()
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--limit_artists", type=int, default=5)
-    ap.add_argument("--snapshot", required=True)
-    ap.add_argument("--seed", default="data/seed/seed_artists.txt")
-    args = ap.parse_args()
-    market = os.getenv("MARKET", "BR")
-    out_path = os.getenv("OUTPUT_JSONL",
-                         os.path.join("data", "raw", f"funk_br_discografia_raw_{args.snapshot}.jsonl"))
-    cid = os.getenv("SPOTIFY_CLIENT_ID") or os.getenv("SPOTIPY_CLIENT_ID")
-    sec = os.getenv("SPOTIFY_CLIENT_SECRET") or os.getenv("SPOTIPY_CLIENT_SECRET")
-    if not cid or not sec:
-        print("❌ Falta SPOTIFY_CLIENT_ID/SECRET no ambiente (.env).", file=sys.stderr)
-        sys.exit(2)
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    print(f"[init] MARKET={market} | OUT={out_path}")
-    tok = requests.post(
-        "https://accounts.spotify.com/api/token",
-        auth=(cid,sec), data={"grant_type":"client_credentials"}, timeout=30
-    ).json().get("access_token")
-    if not tok:
-        print("❌ Não consegui token client_credentials", file=sys.stderr)
-        sys.exit(3)
-    H = {"Authorization": f"Bearer {tok}"}
+            json_log("track_persisted", track_id=row["track_id"], n_markets=row["n_markets"])
+            total_rows += 1
+    return total_rows
 
 
-def GET(u, **q):
-    """GET com retry/backoff:
-    - 429 → respeita Retry-After (segundos)
-    - 5xx → backoff exponencial + jitter
-    - Pausa entre chamadas: SPOTIFY_REQ_SLEEP (default 0.35s)
-    """
-    import time, os, requests, random
-    backoff = 1.0
-    while True:
-        r = requests.get(u, params=q, headers=H, timeout=30)
-        if r.status_code == 429:
-            ra = r.headers.get("Retry-After")
-            try: wait = int(ra) if ra is not None else backoff
-            except: wait = backoff
-            wait = max(1, min(wait, 3600))
-            print(f"[rate-limit] 429; aguardando {wait}s …", flush=True)
-            time.sleep(wait)
-            backoff = min(backoff*2, 600)
-            continue
-        if 500 <= r.status_code < 600:
-            jitter = random.uniform(0,0.5)
-            wait = min(backoff + jitter, 60)
-            print(f"[retry] {r.status_code}; backoff {wait:.1f}s …", flush=True)
-            time.sleep(wait); backoff = min(backoff*2, 60); continue
-        r.raise_for_status()
-        try: pause = float(os.getenv("SPOTIFY_REQ_SLEEP","0.35"))
-        except: pause = 0.35
-        if pause>0: time.sleep(pause)
-        return r.json()
+def dry_run(fixtures_path: Path) -> None:
+    json_log("dry_run_start", fixtures=str(fixtures_path))
+    for fixture_file in sorted(fixtures_path.glob("*.jsonl")):
+        for line in fixture_file.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            payload = json.loads(line)
+            json_log("dry_run_row", source=str(fixture_file), row=payload)
+    json_log("dry_run_complete")
 
 
-    print("[auth] client_credentials OK")
-    artists=[]
-    with open(args.seed, encoding="utf-8") as f:
-        for line in f:
-            line=line.strip()
-            if line and not line.startswith("#"):
-                artists.append(line)
-    artists = artists[:args.limit_artists]
-    t0=time.time()
-    total_rows=0
-    for i,q in enumerate(artists,1):
-        try:
-            rows = collect_for_artist(H, q, market, out_path)
-            total_rows += rows
-            print(f"[{i}/{len(artists)}] {q}: rows={rows}")
-        except Exception as e:
-            print(f"[{i}/{len(artists)}] {q}: ERRO -> {e}", file=sys.stderr)
-    dt=time.time()-t0
-    print(f"[done] artistas={len(artists)} | linhas={total_rows} | tempo={dt:.1f}s")
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Spotify catalog collector")
+    parser.add_argument("--limit-artists", type=int, default=5)
+    parser.add_argument("--snapshot", help="Snapshot identifier", required=False)
+    parser.add_argument("--seed", default="seed/seed_artists.txt")
+    parser.add_argument("--market", default=os.getenv("MARKET", "BR"))
+    parser.add_argument("--output", default=None, help="Override output JSONL path")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Use fixtures instead of real API calls"
+    )
+    parser.add_argument(
+        "--fixtures",
+        default="tests/fixtures",
+        help="Directory with dry-run JSONL fixtures",
+    )
+    parser.add_argument("--lock-file", default="locks/collect_spotify_catalog.lock")
+    return parser.parse_args(argv)
+
+
+def resolve_output(snapshot: Optional[str], override: Optional[str]) -> Path:
+    if override:
+        return Path(override)
+    snapshot = snapshot or time.strftime("%Y%m%d")
+    return Path("data/raw") / f"funk_br_discografia_raw_{snapshot}.jsonl"
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = parse_args(argv)
+    repo_root = Path(__file__).resolve().parent.parent
+    load_env_file(repo_root / ".env")
+
+    if args.dry_run:
+        dry_run(Path(args.fixtures))
+        return 0
+
+    out_path = resolve_output(args.snapshot, args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        client = SpotifyClient.from_env()
+    except SpotifyClientError as exc:
+        print(f"❌ {exc}", file=sys.stderr)
+        return 2
+
+    seed_path = Path(args.seed)
+    if not seed_path.exists():
+        print(f"❌ seed file not found: {seed_path}", file=sys.stderr)
+        return 3
+
+    with seed_path.open(encoding="utf-8") as handle:
+        artists = [line.strip() for line in handle if line.strip() and not line.startswith("#")]
+    artists = artists[: args.limit_artists]
+
+    json_log("collector_start", artists=len(artists), market=args.market, out=str(out_path))
+    lock_path = Path(args.lock_file)
+    total_rows = 0
+    start = time.time()
+    try:
+        with exclusive_lock(lock_path):
+            for idx, artist in enumerate(artists, start=1):
+                try:
+                    rows = collect_artist_catalog(client, artist, args.market, out_path)
+                    total_rows += rows
+                    json_log("artist_done", artist_query=artist, rows=rows, index=idx)
+                except Exception as exc:  # noqa: BLE001
+                    json_log("artist_error", artist_query=artist, error=str(exc))
+    except BlockingIOError:
+        print(f"❌ lock busy: {lock_path}", file=sys.stderr)
+        return 4
+
+    elapsed = time.time() - start
+    json_log(
+        "collector_complete",
+        artists=len(artists),
+        rows=total_rows,
+        seconds=round(elapsed, 2),
+    )
     print(f"[ok] wrote -> {out_path}")
+    return 0
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

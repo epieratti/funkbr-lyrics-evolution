@@ -1,29 +1,38 @@
-name: CI-lite
+name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
-  make-validate:
+  tests:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-
-      - name: Validate Makefile targets
+          python-version: "3.11"
+      - name: Install dependencies
         run: |
-          make help
-          make -n setup
-          make -n collect
-          make -n pilot_100
-          make -n sanity
-      - name: Validate dedup targets
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Lint (ruff + black)
+        continue-on-error: true
         run: |
-          make -n collect+dedup
-          make -n pilot_100+dedup
+          ruff check code tests
+          black --check code tests
+      - name: Pytest
+        run: |
+          mkdir -p reports
+          pytest -q --maxfail=1 --junitxml=reports/test-results.xml
+      - name: Validate schema
+        run: make validate_schema
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: reports/test-results.xml
+          if-no-files-found: ignore
