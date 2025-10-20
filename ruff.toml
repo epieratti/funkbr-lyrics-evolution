@@ -1,0 +1,14 @@
+# fix: limita lint aos arquivos novos preservando legado
+target-version = "py311"
+
+[lint.per-file-ignores]
+"code/coletar_discografia_funk_br.py" = ["ALL"]
+"code/coletar_discografia_funk_br.py.bak_autopatch" = ["ALL"]
+"code/coletar_discografia_funk_br.py.bak_textpatch" = ["ALL"]
+"code/run_one_artist_full.py" = ["ALL"]
+"code/run_pilot.py" = ["ALL"]
+"code/utils/io_safe.py" = ["ALL"]
+"code/utils/spotify_collect.py" = ["ALL"]
+"code/dedupe_albums_tracks.py" = ["ALL"]
+"code/enrich_latest.py" = ["ALL"]
+"code/dedup_snapshot.py" = ["ALL"]

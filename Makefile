@@ -1,31 +1,68 @@
+SHELL := /usr/bin/env bash
+.SHELLFLAGS := -eu -o pipefail -c
+
 SNAPSHOT ?= $(shell date +%Y%m%d)
 ARGS ?=
+PYTHON ?= python3
+VENV ?= .venv
+LOCK_DIR ?= locks
+
 # Makefile — FunkBR
 # Alvos mínimos e idempotentes
 
-.PHONY: help setup pilot_100 collect sanity clean dedup_raw dedup_file dedup_raw_global
+.PHONY: help setup pilot_100 collect sanity clean dedup_raw dedup_file dedup_raw_global validate_schema \
+        promote_dryrun sanity_report dq_check_dryrun
 
 help:               ## lista comandos
 	@grep -E '^[a-zA-Z_-]+:.*?##' Makefile | awk 'BEGIN{FS=":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
 
-setup:              ## instala deps básicas
-	python -m pip install -U pip || true
-	[ -f requirements.txt ] && pip install -r requirements.txt || true
-	python -m spacy download pt_core_news_sm || true
-	@echo "[setup] ok"
+setup:              ## cria venv, instala deps (respeita OFFLINE=1 ou SKIP_INSTALL=1)
+	@$(PYTHON) -m venv $(VENV) >/dev/null 2>&1 || true
+	@if [ -z "${OFFLINE}" ] && [ -z "${SKIP_INSTALL}" ]; then \
+		echo "[setup] instalando dependências (modo online)"; \
+		$(VENV)/bin/python -m pip install --upgrade pip >/dev/null; \
+		if [ -f requirements.txt ]; then $(VENV)/bin/pip install -r requirements.txt >/dev/null; fi; \
+	else \
+		echo "[setup] modo offline detectado — pulando pip install"; \
+	fi
+	@$(VENV)/bin/python -m compileall code >/dev/null
+	@echo "[setup] virtualenv pronta em $(VENV)"
+
+validate_schema:    ## valida schema com amostra sintética (dry-run)
+	@$(PYTHON) code/validate_schema.py --schema schema.json --jsonl tests/fixtures/schema_sample_valid.jsonl
+
+promote_dryrun:     ## simula promoção de partição usando fixtures e manifesto em tmp/
+	@mkdir -p tmp/promote/src tmp/promote/dst
+	@cp -f tests/fixtures/schema_sample_valid.jsonl tmp/promote/src/sample.jsonl 2>/dev/null || true
+	@$(PYTHON) code/guards/promote_partition.py --schema schema.json --src tmp/promote/src --dst tmp/promote/dst
+
+sanity_report:      ## gera relatórios sintéticos de sanidade em tmp/
+	@$(PYTHON) code/sanity_dashboard.py --input tests/fixtures/schema_sample_valid.jsonl --output-dir tmp
+
+dq_check_dryrun:    ## roda checagem de qualidade em fixtures (dry-run)
+	@$(PYTHON) code/dq_check.py --jsonl tests/fixtures/schema_sample_valid.jsonl --out tmp/dq_summary.json --max-duplicates 0 --max-null 0
 
 pilot_100:          ## piloto rápido (100 artistas)
 	@if [ "${COLLECT_MODE:-enabled}" = "enabled" ]; then 	python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT); fi
 	@[ -s logs/collector.jsonl ] && cp -f logs/collector.jsonl data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl || true
 
 collect:            ## coleta bruta integral
+	@./scripts/require_cmd.sh python
 	./scripts/collect_entrypoint.sh
-	OUTPUT_JSONL="data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl" \
-	set -a; [ -f .env ] && . ./.env; set +a
-	@if [ "${COLLECT_MODE:-enabled}" = "enabled" ]; then 	python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT); fi
+	@{
+		if [ -f .env ]; then
+			while IFS='=' read -r key value; do
+				case "$$key" in
+					SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET) export "$$key"="$$value";;
+				esac;
+			done < <(grep -E '^(SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET)=' .env || true);
+		fi;
+		OUTPUT_JSONL="data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl";
+		if [ "${COLLECT_MODE:-enabled}" = "enabled" ]; then python code/coletar_discografia_funk_br.py $(ARGS) --snapshot $(SNAPSHOT); fi;
+	}
 	@[ -s logs/collector.jsonl ] && cp -f logs/collector.jsonl data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl || true
 sanity:             ## gera painéis de sanidade
-	[ -f code/sanity_dashboard.py ] && python code/sanity_dashboard.py --out reports/sanity || echo "sanity: script ausente, pulando"
+       [ -f code/sanity_dashboard.py ] && python code/sanity_dashboard.py --output-dir reports/sanity || echo "sanity: script ausente, pulando"
 
 clean:              ## remove temporários
 	rm -rf .cache __pycache__ tmp */__pycache__ 2>/dev/null || true
@@ -99,35 +136,61 @@ spotify_ready: ## checklist automatizado p/ pipeline Spotify
 	@./scripts/spotify_ready.sh
 .PHONY: lyrics
 lyrics: ## baixa/atualiza letras (se script existir)
-	@set -e; set -a; [ -f .env ] && . ./.env; set +a; \
-	if [ -f code/run_lyrics.py ]; then \
-		echo "[lyrics] rodando code/run_lyrics.py …"; \
-		OUTPUT_JSONL="data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl" \
-		python code/run_lyrics.py $(ARGS) --snapshot $(SNAPSHOT); \
-	elif [ -f code/lyrics_pipeline.py ]; then \
-		echo "[lyrics] rodando code/lyrics_pipeline.py …"; \
-		OUTPUT_JSONL="data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl" \
-		python code/lyrics_pipeline.py $(ARGS) --snapshot $(SNAPSHOT); \
-	else \
-		echo "[lyrics] nenhum script encontrado (code/run_lyrics.py ou code/lyrics_pipeline.py)."; \
-		exit 2; \
-	fi
+	@./scripts/require_cmd.sh python
+	@{
+		if [ -f .env ]; then
+			while IFS='=' read -r key value; do
+				case "$$key" in
+					SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET) export "$$key"="$$value";;
+				esac;
+			done < <(grep -E '^(SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET)=' .env || true);
+		fi;
+		OUTPUT_JSONL="data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl";
+		if [ -f code/run_lyrics.py ]; then
+			echo "[lyrics] rodando code/run_lyrics.py …";
+			python code/run_lyrics.py $(ARGS) --snapshot $(SNAPSHOT);
+		elif [ -f code/lyrics_pipeline.py ]; then
+			echo "[lyrics] rodando code/lyrics_pipeline.py …";
+			python code/lyrics_pipeline.py $(ARGS) --snapshot $(SNAPSHOT);
+		else
+			echo "[lyrics] nenhum script encontrado (code/run_lyrics.py ou code/lyrics_pipeline.py).";
+			exit 2;
+		fi;
+	}
 .PHONY: process
 process: ## processamento + sanity
-	@set -e; set -a; [ -f .env ] && . ./.env; set +a; \
-	if grep -q '^sanity:' Makefile; then \
-		echo "[process] chamando sanity …"; \
-		$(MAKE) sanity; \
-	else \
-		echo "[process] alvo sanity não encontrado no Makefile."; \
-		exit 2; \
-	fi
-
+	@./scripts/require_cmd.sh python
+	@{
+		if [ -f .env ]; then
+			while IFS='=' read -r key value; do
+				case "$$key" in
+					SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET) export "$$key"="$$value";;
+				esac;
+			done < <(grep -E '^(SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET)=' .env || true);
+		fi;
+		if grep -q '^sanity:' Makefile; then
+			echo "[process] chamando sanity …";
+			$(MAKE) sanity;
+		else
+			echo "[process] alvo sanity não encontrado no Makefile.";
+			exit 2;
+		fi;
+	}
 .PHONY: collect_spotify
 collect_spotify: ## coleta catálogo Spotify (artist/album/track c/ ISRC/UPC)
-	@set -e; set -a; [ -f .env ] && . ./.env; set +a; \
-	OUTPUT_JSONL="data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl" \
-	python code/collect_spotify_catalog.py $(ARGS) --snapshot $(SNAPSHOT)
+	@./scripts/require_cmd.sh python flock
+	@mkdir -p $(LOCK_DIR)
+	@{
+		if [ -f .env ]; then
+			while IFS='=' read -r key value; do
+				case "$$key" in
+					SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET) export "$$key"="$$value";;
+				esac;
+			done < <(grep -E '^(SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET)=' .env || true);
+		fi;
+		OUTPUT_JSONL="data/raw/funk_br_discografia_raw_$(SNAPSHOT).jsonl" \
+		scripts/with_lock.sh "$(LOCK_DIR)/collect_spotify_catalog.lock" -- $(PYTHON) code/collect_spotify_catalog.py $(ARGS) --snapshot $(SNAPSHOT);
+	}
 
 spoti_quota_check:
 	@./scripts/spotify_quota_check.sh

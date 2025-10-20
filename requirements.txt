@@ -15,13 +15,8 @@ colorama==0.4.6
 # --- Tratamento de dados e CSV ---
 pandas==2.2.3
 
-# --- Fuzzy matching para artistas ---
-fuzzywuzzy==0.18.0
-python-Levenshtein==0.25.1
-
-# --- Backoff exponencial e retries ---
-tenacity==8.5.0
-
-# --- Compatibilidade e sistema ---
-platformdirs==4.2.2
-python-dotenv
+# --- Testes e qualidade ---
+pytest==8.3.3
+jsonschema==4.23.0
+ruff==0.6.5
+black==24.8.0
