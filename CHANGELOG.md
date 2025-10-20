@@ -18,3 +18,9 @@
 > 📦 Snapshot de backup:  
 > `/mnt/backup/funkbr_repo_2025-10-20_0656.tar.gz`  
 > SHA256: `1986effbf03dec8f232142468579600e9da1265275f01b1145508cd1059c5d5a`
+## 2025-10-20 – Hardening
+- Docs: unificação de README/CHANGELOG; duplicatas movidas para docs/_duplicates.
+- README: corrigida citação para epieratti/funkbr-lyrics-evolution.
+- Health: warning automático para JSONL 0 bytes após janela de coleta.
+- Backup: registrar caminho no Drive + SHA256 em cada snapshot.
+

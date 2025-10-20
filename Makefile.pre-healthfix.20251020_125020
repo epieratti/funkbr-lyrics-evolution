@@ -50,7 +50,7 @@ health: ## checa cron, logs de hoje, jsonl e backup
 	@echo "== Cron status ==" && systemctl is-active cron
 	@echo "== Logs dir ==" && ls -ld logs || true
 	@echo "== Logs de hoje ==" && ls -lh logs/*$$(date +%F)*.log 2>/dev/null || echo "(ainda sem logs de hoje)"
-	@END_HOUR_LOCAL=06 scripts/health_zero_byte_guard.sh data/raw || true
+	@echo "== JSONL hoje (0 bytes) ==" && find data/raw -maxdepth 1 -type f -name "*$$(date +%Y%m%d)*.jsonl" -size 0 -printf "%f\n" || true
 	@echo "== Backup usage ==" && du -sh /mnt/backup/raw /mnt/backup/processed 2>/dev/null || true
 
 # Cria/atualiza rascunho de release no GitHub
