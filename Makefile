@@ -210,3 +210,42 @@ backup_all_daily: ## executa scripts/backup_all_daily.sh imediatamente
 register_snapshot: ## registra SHA256 e (opcional) caminho no Drive
 	@[ -n "$(FILE)" ] || (echo "uso: make register_snapshot FILE=path [DRIVE=remote]"; exit 1)
 	@./scripts/register_snapshot.sh "$(FILE)" "$(DRIVE)"
+
+# === Version-aware packaging ===
+VERSION_FILE := VERSION
+VERSION := $(shell cat $(VERSION_FILE))
+DATE := $(shell date +%F)
+
+# nomes padronizados (versão + data)
+ARTIFACT := funkbr-$(VERSION)-$(DATE).tar.gz
+CORPUS_FULL := processed_brcorpus/brcorpus_$(DATE).jsonl
+CORPUS_PT := processed_brcorpus/brcorpus_$(DATE)_pt.jsonl
+PKG_DIR := /tmp/funkbr_pkg
+
+.PHONY: print-version artifacts package-named
+
+## Mostra a versão atual (lida do arquivo VERSION)
+print-version:
+	@echo $(VERSION)
+
+## Junta artefatos de release de hoje em /tmp/funkbr_pkg e empacota o tar.gz versionado
+artifacts:
+	@mkdir -p $(PKG_DIR)
+	@echo "Coletando artefatos para $(VERSION) ($(DATE)) em $(PKG_DIR)..."
+	@if [ -s "$(CORPUS_FULL)" ]; then cp -v "$(CORPUS_FULL)" "$(PKG_DIR)/"; else echo "Aviso: $(CORPUS_FULL) não encontrado/sem conteúdo"; fi
+	@if [ -s "$(CORPUS_PT)" ]; then cp -v "$(CORPUS_PT)" "$(PKG_DIR)/"; else echo "Aviso: $(CORPUS_PT) não encontrado/sem conteúdo"; fi
+	@echo "Empacotando $(ARTIFACT)..."
+	tar -czf "$(ARTIFACT)" \
+		README.md \
+		Makefile \
+		.gitignore \
+		crontab/funkbr.cron \
+		scripts/with_lock.sh \
+		scripts/backup_all_daily.sh \
+		scripts/diag/run_full_health.sh \
+		scripts/log_retention.sh
+	@echo "OK: $(ARTIFACT)"
+
+## Gera um pacote nomeado com a versão atual (alias conveniente)
+package-named: artifacts
+	@echo "Pacote pronto: $(ARTIFACT)"
