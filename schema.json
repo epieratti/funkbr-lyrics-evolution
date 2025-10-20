@@ -1,29 +1,90 @@
 {
-  "version": "1.0",
-  "partitions": ["year"],
-  "columns": {
-    "track_id": "string",
-    "isrc": "string",
-    "artist_id": "string",
-    "artist_name": "string",
-    "album_id": "string",
-    "album_name": "string",
-    "release_date": "date",
-    "release_precision": "string",
-    "year_launch": "int",
-    "year_impact": "int?",
-    "region_proxy": "string",
-    "subgenre": "string",
-    "label": "string",
-    "popularity": "int",
-    "decil_pop": "int",
-    "tokens_total": "int",
-    "tokens_clean": "int",
-    "qc_censored": "bool",
-    "qc_lang_pt_ratio": "float",
-    "source_lyrics": "string",
-    "source_year_validation": "string",
-    "schema_version": "string",
-    "ingestion_ts": "timestamp"
-  }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "accept_in_brcorpus": {
+      "type": "integer"
+    },
+    "album_id": {
+      "type": "string"
+    },
+    "album_name": {
+      "type": "string"
+    },
+    "album_release_date": {
+      "type": "string"
+    },
+    "album_release_precision": {
+      "type": "string"
+    },
+    "album_total_tracks": {
+      "type": "integer"
+    },
+    "album_type": {
+      "type": "string"
+    },
+    "album_upc": {
+      "type": "string"
+    },
+    "artist_id": {
+      "type": "string"
+    },
+    "artist_name": {
+      "type": "string"
+    },
+    "artist_query": {
+      "type": "string"
+    },
+    "country_score": {
+      "type": "integer"
+    },
+    "disc_number": {
+      "type": "integer"
+    },
+    "duration_ms": {
+      "type": "integer"
+    },
+    "explicit": {
+      "type": "boolean"
+    },
+    "ingestion_ts": {
+      "type": "integer"
+    },
+    "isrc": {
+      "type": "string"
+    },
+    "isrc_score": {
+      "type": "integer"
+    },
+    "market": {
+      "type": "string"
+    },
+    "pt_hint": {
+      "type": "integer"
+    },
+    "seed_match": {
+      "type": "integer"
+    },
+    "track_id": {
+      "type": "string"
+    },
+    "track_name": {
+      "type": "string"
+    },
+    "track_number": {
+      "type": "integer"
+    },
+    "ts": {
+      "type": "integer"
+    },
+    "year_window_end": {
+      "type": "integer"
+    },
+    "year_window_start": {
+      "type": "integer"
+    }
+  },
+  "required": [],
+  "title": "funkbr processed_brcorpus record",
+  "type": "object"
 }
