@@ -268,7 +268,7 @@ def cli_main():
       - cria diretórios de saída se necessário
       - para cada seed, chama 'collect_for_artist' (função já existente no script)
     Requisitos:
-      - função _call_collect_for_artist(artist_query, out_writer, snapshot_tag, log) deve existir no arquivo
+      - função _call__call_collect_for_artist(artist_query, out_writer, snapshot_tag, log) deve existir no arquivo
     """
     import os, sys, json, time
 
