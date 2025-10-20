@@ -27,6 +27,85 @@ from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from collections import deque
 
+# ==== Dedup Utils (leve, na origem) ====
+import os, json, re, glob, unicodedata
+
+def _strip_accents(s: str) -> str:
+    return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+
+def _canonical(s: str) -> str:
+    if s is None:
+        return ""
+    s = _strip_accents(str(s).lower())
+    s = s.replace("’", "'").replace("“","\"").replace("”","\"")
+    s = re.sub(r"[^\w\s]", " ", s)
+    for w in (" da "," de "," do "," das "," dos "," d "," e "," a "," o "," as "," os "):
+        s = s.replace(w, " ")
+    s = re.sub(r"(.)\1{2,}", r"\1", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+def make_dedup_key(row: dict) -> str:
+    # 1) ISRC
+    isrc = (row.get("isrc") or (row.get("external_ids") or {}).get("isrc"))
+    if isrc:
+        return f"isrc::{isrc}"
+    # 2) artist_id + track_id
+    aid = row.get("artist_id"); tid = row.get("track_id")
+    if aid and tid:
+        return f"arttrk::{aid}::{tid}"
+    # 3) fallback canônico: artista + faixa + ano
+    aname = row.get("artist_name") or ""
+    tname = row.get("track_name") or ""
+    y = None
+    for key in ("album_release_date","release_date","year_launch"):
+        val = row.get(key)
+        if isinstance(val, int):
+            y = val; break
+        if isinstance(val, str) and len(val)>=4 and val[:4].isdigit():
+            y = int(val[:4]); break
+    y = y or 0
+    return f"cty::{_canonical(aname)}::{_canonical(tname)}::{y}"
+
+def load_seen_keys(base="data/raw", pattern="*.jsonl", limit=None):
+    """
+    Carrega chaves já existentes para evitar duplicatas na origem.
+    - base/pattern: conjunto de arquivos JSONL a varrer
+    - limit: se quiser limitar quantos arquivos ler (None = todos)
+    """
+    files = sorted(glob.glob(os.path.join(base, pattern)))
+    if limit is not None:
+        files = files[:limit]
+    seen = set()
+    for fp in files:
+        try:
+            with open(fp, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    seen.add(make_dedup_key(obj))
+        except FileNotFoundError:
+            continue
+    return seen
+def _load_seen_keys_all():
+    return load_seen_keys(base="data/raw", pattern="*.jsonl")
+
+# ==== /Dedup Utils ====
+
+# ---- Dedup na origem: índice global de chaves já vistas ----
+try:
+    _DEDUP_SEEN = _DEDUP_SEEN  # já existe
+except NameError:
+    _DEDUP_SEEN = _load_seen_keys_all()
+    _DEDUP_IGNORED = 0
+# ---- /Dedup na origem ----
+
+
 # ---------------------------------------------------------------------
 # Inicialização de ambiente e diretórios
 # ---------------------------------------------------------------------
@@ -161,3 +240,11 @@ SCRIPT_VERSION = "v1.2-stable"
 # Restante do script (mantido conforme a versão validada por você)
 # ---------------------------------------------------------------------
 # (continua o mesmo conteúdo validado — todas as funções, pipeline e main)
+
+# ---- Dedup na origem: log final ----
+try:
+    print("[dedup@origem] ignorados=" + str(_DEDUP_IGNORED) + " | index_size=" + str(len(_DEDUP_SEEN)))
+except Exception:
+    pass
+# ---- /log final ----
+
