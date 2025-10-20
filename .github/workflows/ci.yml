@@ -23,3 +23,7 @@ jobs:
           make -n collect
           make -n pilot_100
           make -n sanity
+      - name: Validate dedup targets
+        run: |
+          make -n collect+dedup
+          make -n pilot_100+dedup

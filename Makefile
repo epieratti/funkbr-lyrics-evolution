@@ -33,3 +33,9 @@ dedup_file:         ## deduplica um arquivo específico
 
 dedup_raw_global:   ## deduplica globalmente (mantém 1ª ocorrência em todo o conjunto)
 	python code/dedup_snapshot.py --path data/raw --pattern "*.jsonl" --scope global
+
+collect+dedup:      ## coleta e roda dedup global (1 comando)
+	./scripts/run_collect_with_dedup.sh $(shell date +%Y%m%d)
+
+pilot_100+dedup:    ## piloto (100) e dedup global
+	LIMIT=100 ./scripts/run_pilot_with_dedup.sh $(shell date +%Y%m%d)
