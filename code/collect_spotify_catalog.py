@@ -261,14 +261,24 @@ def main():
 # [patched] removed stray top-level cli_main() call
 
 # === injected runner (idempotente) ============================================
-def cli_main():
+def cli_main():    # [patched] chamada resiliente ao collect_for_artist com fallback de assinatura
+    def _dispatch_collect(artist, **base):
+        try:
+            return _dispatch_collect(artist_query=artist, **base)
+        except TypeError:
+            try:
+                return _dispatch_collect(artist, **base)
+            except TypeError:
+                # último fallback: só o nome do artista
+                return _dispatch_collect(artist)
+
     """
     Runner estável:
       - lê seeds de 'seed/seeds_raw.txt' (1 por linha; ignora vazias/#)
       - cria diretórios de saída se necessário
       - para cada seed, chama 'collect_for_artist' (função já existente no script)
     Requisitos:
-      - função _call__call_collect_for_artist(artist_query, out_writer, snapshot_tag, log) deve existir no arquivo
+      - função _call__call__dispatch_collect(artist_query, out_writer, snapshot_tag, log) deve existir no arquivo
     """
     import os, sys, json, time
 
