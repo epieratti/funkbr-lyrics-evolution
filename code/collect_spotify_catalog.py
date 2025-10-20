@@ -261,7 +261,98 @@ def main():
 # [patched] removed stray top-level cli_main() call
 
 # === injected runner (idempotente) ============================================
-def cli_main():    # [patched] chamada resiliente ao collect_for_artist com fallback de assinatura
+
+def cli_main():
+    """
+    CLI resiliente:
+    - lê seeds de seed/seeds_raw.txt
+    - cria/usa snapshot (--snapshot)
+    - chama collect_for_artist() adaptando à assinatura real via introspecção
+    """
+    import argparse, os, sys, inspect
+
+    p = argparse.ArgumentParser(description="FunkBR collector CLI")
+    p.add_argument("--snapshot", default="NOW_TEST")
+    p.add_argument("--seeds", default="seed/seeds_raw.txt")
+    args = p.parse_args()
+
+    # Arquivo de saída
+    top = os.path.dirname(os.path.abspath(__file__))
+    repo = os.path.abspath(os.path.join(top, ".."))
+    out_dir = os.path.join(repo, "data", "raw")
+    os.makedirs(out_dir, exist_ok=True)
+    out_file = os.path.join(out_dir, f"funk_br_discografia_raw_{args.snapshot}.jsonl")
+
+    # Ler seeds
+    seeds_path = os.path.join(repo, args.seeds)
+    if not os.path.exists(seeds_path):
+        print(f"[cli_main] ERRO: seeds não encontrado: {seeds_path}", file=sys.stderr)
+        return 2
+    seeds = [ln.strip() for ln in open(seeds_path, "r", encoding="utf-8") if ln.strip()]
+
+    # Base kwargs (se main/coletores usarem), sem forçar chaves que não existem
+    base = {}
+
+    # Dispatcher que adapta chamada à assinatura real de collect_for_artist
+    def _dispatch_collect(artist: str, **base_kwargs):
+        try:
+            fn = collect_for_artist  # definido no módulo
+        except NameError:
+            print("[cli_main] ERRO: collect_for_artist() não encontrado", file=sys.stderr)
+            return False
+        sig = inspect.signature(fn)
+
+        # somente kwargs aceitos
+        kw = {k: v for k, v in base_kwargs.items() if k in sig.parameters}
+
+        # nome do primeiro param posicional (se houver)
+        poslike = [
+            p for p in sig.parameters.values()
+            if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+        ]
+
+        # tentativas:
+        # 1) posicional puro
+        try:
+            if poslike:
+                fn(artist, **kw)
+                return True
+        except TypeError:
+            pass
+
+        # 2) nomes convencionais
+        for key in ("artist_query", "artist", "query", "q", "name", "seed"):
+            if key in sig.parameters:
+                try:
+                    kw2 = dict(kw); kw2[key] = artist
+                    fn(**kw2)
+                    return True
+                except TypeError:
+                    continue
+
+        # 3) sem artista (se o coletor buscar seeds de dentro)
+        try:
+            fn(**kw)
+            return True
+        except TypeError:
+            return False
+
+    print(f"[cli_main] seeds: {seeds_path}")
+    print(f"[cli_main] out:   {out_file}")
+
+    ok = 0
+    with open(out_file, "w", encoding="utf-8") as _fout:
+        # Se o coletor escreve por conta própria, apenas garantimos que o arquivo exista.
+        pass
+
+    for artist in seeds:
+        if _dispatch_collect(artist, **base):
+            ok += 1
+        else:
+            print(f"[cli_main] AVISO: seed={artist!r} não pôde ser processado (assinatura incompatível)", file=sys.stderr)
+
+    print(f"[cli_main] finalizado. seeds_ok={ok}, arquivo={out_file}")
+    return 0
     def _dispatch_collect(artist, **base):
         try:
             return _dispatch_collect(artist_query=artist, **base)
@@ -343,4 +434,5 @@ def cli_main():    # [patched] chamada resiliente ao collect_for_artist com fall
 # [patched] canonical __main__ guard
 if __name__ == "__main__":
     cli_main()
+cli_main()
 cli_main()
