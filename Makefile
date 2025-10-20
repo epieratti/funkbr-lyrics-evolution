@@ -193,3 +193,15 @@ backup_git: ## git add/commit/push do código (sem dados/segredos)
 backup_all: ## faz local + drive + git (em cadeia, via script)
 	@SNAPSHOT=$${SNAPSHOT:-} REMOTE=$${REMOTE:-gdrive:Backups/funkbr-lyrics-evolution} \
 	 scripts/backup_all.sh
+
+.PHONY: backup_drive_all
+backup_drive_all: ## (Drive) backup TOTAL: tar + mirror completo (inclui .env, venv, data, logs etc.)
+	@SNAPSHOT=$${SNAPSHOT:-$$(date +%Y%m%d_%H%M)} \
+	REMOTE=$${REMOTE:-gdrive:Backups/funkbr-lyrics-evolution} \
+	scripts/backup_drive_all.sh
+.PHONY: backup_drive_tar
+backup_drive_tar: ## gera .tar.gz (sem venv/.git) e envia p/ Google Drive
+	@bash scripts/backup_drive_tar.sh
+.PHONY: backup_all_daily
+backup_all_daily: ## executa scripts/backup_all_daily.sh imediatamente
+	@bash scripts/backup_all_daily.sh
