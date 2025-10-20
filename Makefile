@@ -43,3 +43,11 @@ collect+dedup:      ## coleta e roda dedup global (1 comando)
 
 pilot_100+dedup:    ## piloto (100) e dedup global
 	LIMIT=100 ./scripts/run_pilot_with_dedup.sh $(shell date +%Y%m%d)
+
+health: ## checa cron, logs de hoje, jsonl e backup
+	@echo "== CRON lines ==" && crontab -l | sed -n '1,12p'
+	@echo "== Cron status ==" && systemctl is-active cron
+	@echo "== Logs dir ==" && ls -ld logs || true
+	@echo "== Logs de hoje ==" && ls -lh logs/*$$(date +%F)*.log 2>/dev/null || echo "(ainda sem logs de hoje)"
+	@echo "== JSONL hoje (0 bytes) ==" && find data/raw -maxdepth 1 -type f -name "*$$(date +%Y%m%d)*.jsonl" -size 0 -printf "%f\n" || true
+	@echo "== Backup usage ==" && du -sh /mnt/backup/raw /mnt/backup/processed 2>/dev/null || true
