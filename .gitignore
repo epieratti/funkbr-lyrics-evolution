@@ -69,3 +69,9 @@ logs/
 *.log
 logs/collector_progress*.json
 code/*.bak.*
+
+# Ignora tudo na pasta processed_brcorpus
+processed_brcorpus/*
+
+# Exceto arquivos consolidados de corpus
+!processed_brcorpus/brcorpus_*.jsonl
