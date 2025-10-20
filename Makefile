@@ -9,12 +9,6 @@ help:               ## lista comandos
 setup:              ## instala deps básicas (ignora falta de arquivo)
 	python -m pip install -U pip || true
 	[ -f requirements.txt ] && pip install -r requirements.txt || true
-	python - <<'PY' || true
-try:
-	import spacy, sys
-except Exception:
-	sys.exit(0)
-PY
 	python -m spacy download pt_core_news_sm || true
 	@echo "[setup] ok"
 
