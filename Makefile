@@ -256,3 +256,7 @@ package-named: artifacts
 .PHONY: sanity_schema
 sanity_schema:
 	python scripts/diag/validate_schema_sample.py
+
+.PHONY: ci_smoke
+ci_smoke:
+	./scripts/diag/ci_smoke.sh
