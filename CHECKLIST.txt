@@ -1,0 +1,6 @@
+[ ] Cron ativo
+[ ] Logs do dia existentes
+[ ] JSONL do dia > 0 bytes
+[ ] Backup gerado
+[ ] Health OK
+[ ] README/CHANGELOG sem duplicatas

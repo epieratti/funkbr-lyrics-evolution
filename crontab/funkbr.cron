@@ -14,4 +14,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # === Backup consolidado (Drive+Git) — opcional, programar conscientemente ===
 # UTC 06:30 (= 03:30 BRT). Habilite quando quiser:
-# 30 6 * * * cd /root/funkbr-lyrics-evolution && scripts/backup_all_daily.sh >> logs/backup_$(date +\%F).log 2>&1
+30 6 * * * cd /root/funkbr-lyrics-evolution && scripts/backup_all_daily.sh >> logs/backup_$(date +\%F).log 2>&1
+
+# === Retenção de logs (diário) ===
+20 0 * * * cd $(git rev-parse --show-toplevel) && ./scripts/log_retention.sh logs >> logs/retention_$(date +\%F).log 2>&1

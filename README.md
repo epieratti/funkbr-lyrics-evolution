@@ -55,7 +55,7 @@ make sanity
 Se utilizar este repositório em pesquisa, cite como:
 
 ```
-Pieratti, E. (2025). FunkBR-Lyrics-Evolution: Longitudinal analysis of Brazilian funk lyrics (2005–2025). GitHub repository. https://github.com/seuusuario/epieratti/funkbr-lyrics-evolution
+Pieratti, E. (2025). FunkBR-Lyrics-Evolution: Longitudinal analysis of Brazilian funk lyrics (2005–2025). GitHub repository. https://github.com/epieratti/funkbr-lyrics-evolution
 ```
 
 ---

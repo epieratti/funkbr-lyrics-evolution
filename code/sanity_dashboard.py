@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os, glob, csv, time, statistics as st, argparse
 p=argparse.ArgumentParser(); p.add_argument("--out", default="reports/sanity"); a=p.parse_args()
 os.makedirs(a.out, exist_ok=True)

@@ -24,3 +24,7 @@
 - Health: warning automático para JSONL 0 bytes após janela de coleta.
 - Backup: registrar caminho no Drive + SHA256 em cada snapshot.
 
+- Snapshot: data/raw/one_20251020_010051_Anitta_albums_tracks.jsonl
+  - SHA256: c51e73993dbcd965230f6c6223d6d08ea90c7ff94ac79ca3dfb5eeaccebb84b5
+  - Drive:  gdrive:Backups/funkbr-lyrics-evolution/one_20251020_010051_Anitta_albums_tracks.jsonl
+

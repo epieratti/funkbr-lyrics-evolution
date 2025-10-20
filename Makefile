@@ -205,3 +205,8 @@ backup_drive_tar: ## gera .tar.gz (sem venv/.git) e envia p/ Google Drive
 .PHONY: backup_all_daily
 backup_all_daily: ## executa scripts/backup_all_daily.sh imediatamente
 	@bash scripts/backup_all_daily.sh
+
+.PHONY: register_snapshot
+register_snapshot: ## registra SHA256 e (opcional) caminho no Drive
+	@[ -n "$(FILE)" ] || (echo "uso: make register_snapshot FILE=path [DRIVE=remote]"; exit 1)
+	@./scripts/register_snapshot.sh "$(FILE)" "$(DRIVE)"
